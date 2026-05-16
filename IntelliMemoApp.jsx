@@ -940,11 +940,12 @@ const CSS = `
     transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
   }
   .ctrl.hi-on { background: var(--amber-bg); color: var(--amber); border-color: rgba(217,119,6,0.25); }
+  .ctrl svg { display: block; flex-shrink: 0; }
   .ctrl input[type="date"] {
-    font-size: 16px; font-weight: 600; color: var(--t1);
+    font-size: 12px; font-weight: 600; color: var(--t1);
     color-scheme: light; cursor: pointer; flex: 1; text-align: center;
-    padding-right: 8px;
   }
+  .ctrl input[type="date"]::-webkit-calendar-picker-indicator { display: none; }
 
   /* AI 처리 유형 선택 칩 (메모 전용) */
   .ai-mode-row {
@@ -2091,6 +2092,7 @@ function Composer({
           >
             <div className="action-ctrl">
               <label className="ctrl" style={{ cursor: "pointer" }}>
+                <CalendarDays size={14} />
                 <input
                   type="date"
                   value={actionDueDate}
