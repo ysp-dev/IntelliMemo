@@ -241,7 +241,14 @@ const correctKorean = async ({ apiKey, model, text, mode = DEFAULT_AI_CORRECTION
     throw new Error(e instanceof TypeError ? "네트워크 연결을 확인하세요." : "API 호출 실패");
   }
 
-  if (!res.ok) throw new Error(apiError(res.status, await res.text()));
+  if (!res.ok) {
+    const body = await res.text();
+    const err = new Error(apiError(res.status, body));
+    err.status = res.status;
+    const ra = res.headers.get("Retry-After");
+    if (ra) err.retryAfter = parseInt(ra, 10);
+    throw err;
+  }
 
   const data = await res.json();
   if ((data.candidates ?? []).some((c) => c.finishReason === "MAX_TOKENS"))
@@ -273,7 +280,14 @@ const extractTextFromImage = async ({ apiKey, model, base64, mimeType = "image/j
   } catch (e) {
     throw new Error(e instanceof TypeError ? "네트워크 연결을 확인하세요." : "API 호출 실패");
   }
-  if (!res.ok) throw new Error(apiError(res.status, await res.text()));
+  if (!res.ok) {
+    const body = await res.text();
+    const err = new Error(apiError(res.status, body));
+    err.status = res.status;
+    const ra = res.headers.get("Retry-After");
+    if (ra) err.retryAfter = parseInt(ra, 10);
+    throw err;
+  }
   const data = await res.json();
   return extractText(data) ?? "";
 };
@@ -909,6 +923,17 @@ const CSS = `
   .ai-mode-chip.style-chip.on  { background: rgba(139,92,246,0.12); color: #8b5cf6; border-color: rgba(139,92,246,0.5); }
   .ai-mode-chip.semantic-chip     { border-color: rgba(245,158,11,0.35); }
   .ai-mode-chip.semantic-chip.on  { background: rgba(245,158,11,0.12); color: #f59e0b; border-color: rgba(245,158,11,0.5); }
+
+  .rate-limit-bar {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    padding: 7px 12px; border-radius: var(--r-m); margin-top: 8px;
+    background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.3);
+    font-size: 12px; color: #d97706;
+  }
+  .rate-limit-dismiss {
+    font-size: 11px; font-weight: 600; color: #d97706;
+    white-space: nowrap; text-decoration: underline; text-underline-offset: 2px;
+  }
 
   /* AI row */
   .ai-row {
@@ -1785,6 +1810,9 @@ function Composer({
   aiStatus,
   onCorrectDraft,
   onOcrError,
+  rateLimitSec,
+  onRateLimit,
+  onDismissRateLimit,
 }) {
   const memoRef   = useRef(null);
   const actionRef = useRef(null);
@@ -1833,6 +1861,11 @@ function Composer({
         setOcrState("idle");
         return;
       } catch (err) {
+        if (err.status === 429) {
+          setOcrState("idle");
+          onRateLimit(err.retryAfter ?? 60);
+          return;
+        }
         lastError = err;
       }
     }
@@ -2089,6 +2122,15 @@ function Composer({
             </div>
           )}
         </>
+      )}
+
+      {rateLimitSec > 0 && (
+        <div className="rate-limit-bar">
+          <span>⏱ {rateLimitSec}초 후 재시도 가능</span>
+          <button type="button" className="rate-limit-dismiss" onClick={onDismissRateLimit}>
+            무시하고 재시도
+          </button>
+        </div>
       )}
 
       <div className="ai-row">
@@ -2504,6 +2546,8 @@ export default function IntelliMemoApp() {
   const [tagFilter,      setTagFilter]      = useState("all");
   const [searchQuery,    setSearchQuery]    = useState("");
   const [searchOpen,     setSearchOpen]     = useState(false);
+  const [rateLimitUntil, setRateLimitUntil] = useState(0);
+  const [rateLimitSec,   setRateLimitSec]   = useState(0);
   const [aiSettings,       setAiSettings]       = useState({ apiKey: "", model: DEFAULT_AI_MODEL });
   const [aiStatus,         setAiStatus]         = useState({ state: "idle", message: `Gemini · ${DEFAULT_AI_MODEL}` });
   const [aiError,          setAiError]          = useState(null);
@@ -2550,6 +2594,19 @@ export default function IntelliMemoApp() {
     mq.addEventListener("change", handler);
     return () => mq.removeEventListener("change", handler);
   }, []);
+
+  // ── Rate limit countdown ──
+  useEffect(() => {
+    if (!rateLimitUntil) { setRateLimitSec(0); return; }
+    const update = () => {
+      const sec = Math.ceil((rateLimitUntil - Date.now()) / 1000);
+      if (sec <= 0) { setRateLimitSec(0); setRateLimitUntil(0); }
+      else setRateLimitSec(sec);
+    };
+    update();
+    const id = setInterval(update, 1000);
+    return () => clearInterval(id);
+  }, [rateLimitUntil]);
 
   // ── Tick ──
   useEffect(() => {
@@ -2703,6 +2760,12 @@ export default function IntelliMemoApp() {
         setTimeout(() => setAiStatus({ state: "idle", message: `Gemini · ${model}` }), 2500);
         return;
       } catch (err) {
+        if (err.status === 429) {
+          const sec = err.retryAfter ?? 60;
+          setRateLimitUntil(Date.now() + sec * 1000);
+          setAiStatus({ state: "error", message: "요청 한도 초과" });
+          return;
+        }
         lastError = err;
       }
     }
@@ -2747,6 +2810,9 @@ export default function IntelliMemoApp() {
           aiStatus={aiStatus}
           onCorrectDraft={correctDraft}
           onOcrError={(err) => setAiError(err)}
+          rateLimitSec={rateLimitSec}
+          onRateLimit={(sec) => setRateLimitUntil(Date.now() + sec * 1000)}
+          onDismissRateLimit={() => setRateLimitUntil(0)}
         />
 
         <section
@@ -2780,8 +2846,10 @@ export default function IntelliMemoApp() {
                     )}
 
                     {filteredMemos.length === 0 ? (
-                      memos.length > 0 && searchQuery.trim()
-                        ? <p style={{ textAlign: "center", color: "var(--t3)", fontSize: 13, padding: "32px 0" }}>검색 결과가 없습니다</p>
+                      memos.length > 0
+                        ? <p style={{ textAlign: "center", color: "var(--t3)", fontSize: 13, padding: "32px 0" }}>
+                            {searchQuery.trim() ? "검색 결과가 없습니다" : "필터 조건에 맞는 메모가 없습니다"}
+                          </p>
                         : <EmptyState type="memos" />
                     ) : (
                       memoGroups.map(([label, group]) => (
@@ -2829,8 +2897,10 @@ export default function IntelliMemoApp() {
                     )}
 
                     {filteredActions.length === 0 ? (
-                      actions.length > 0 && searchQuery.trim()
-                        ? <p style={{ textAlign: "center", color: "var(--t3)", fontSize: 13, padding: "32px 0" }}>검색 결과가 없습니다</p>
+                      actions.length > 0
+                        ? <p style={{ textAlign: "center", color: "var(--t3)", fontSize: 13, padding: "32px 0" }}>
+                            {searchQuery.trim() ? "검색 결과가 없습니다" : "필터 조건에 맞는 액션이 없습니다"}
+                          </p>
                         : <EmptyState type="actions" />
                     ) : (
                       <div className="action-list">
