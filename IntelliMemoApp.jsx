@@ -609,7 +609,6 @@ const CSS = `
     flex-shrink: 0;
   }
   .layout-toggle-btn:hover { background: rgba(0,0,0,0.09); color: var(--t1); }
-  .layout-toggle-btn.landscape-active { background: var(--accent-bg); color: var(--accent); }
   .layout-toggle-btn.reload-btn { color: var(--t3); }
 
   .memo-body {
