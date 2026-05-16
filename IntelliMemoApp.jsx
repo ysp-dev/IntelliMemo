@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
+  ArrowUp,
   CalendarDays,
+  Camera,
   Check,
   CheckCircle2,
   Copy,
   Flame,
   KeyRound,
   ListFilter,
-  ArrowUp,
   MessageSquareText,
   Monitor,
   Pencil,
@@ -198,6 +199,43 @@ const correctKorean = async ({ apiKey, model, text, mode = "typo" }) => {
   return corrected;
 };
 
+const imageToBase64 = (file) =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result.split(",")[1]);
+    reader.onerror = () => reject(new Error("이미지 읽기 실패"));
+    reader.readAsDataURL(file);
+  });
+
+const extractTextFromImage = async ({ apiKey, model, file }) => {
+  const base64 = await imageToBase64(file);
+  const mimeType = file.type || "image/jpeg";
+  let res;
+  try {
+    res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
+        body: JSON.stringify({
+          contents: [{
+            parts: [
+              { text: "이미지에서 텍스트를 모두 추출해줘. 레이아웃과 줄바꿈을 최대한 보존하고 텍스트만 반환해. 텍스트가 없으면 빈 문자열을 반환해." },
+              { inline_data: { mime_type: mimeType, data: base64 } },
+            ],
+          }],
+          generationConfig: { maxOutputTokens: 2048, temperature: 0.1 },
+        }),
+      },
+    );
+  } catch (e) {
+    throw new Error(e instanceof TypeError ? "네트워크 연결을 확인하세요." : "API 호출 실패");
+  }
+  if (!res.ok) throw new Error(apiError(res.status, await res.text()));
+  const data = await res.json();
+  return extractText(data) ?? "";
+};
+
 // ─── CSS ─────────────────────────────────────────────────────────────────────
 
 const CSS = `
@@ -293,7 +331,7 @@ const CSS = `
     margin: 0;
     font-size: 22px; font-weight: 800;
     letter-spacing: -0.03em; line-height: 1.1;
-    color: var(--t1);
+    color: var(--t3);
   }
   .brand p {
     margin: 3px 0 0;
@@ -743,6 +781,14 @@ const CSS = `
     color: var(--t3); background: var(--raised);
   }
 
+  .btn-camera {
+    color: var(--t2); background: var(--raised);
+    transition: background 120ms ease, color 120ms ease;
+  }
+  .btn-camera:hover  { background: rgba(0,0,0,0.08); color: var(--t1); }
+  .btn-camera:disabled { opacity: 0.3; cursor: default; }
+  .btn-camera.scanning svg { animation: spin 0.9s linear infinite; }
+
   .btn-submit {
     width: 36px; height: 36px; border-radius: 50%;
     background: var(--accent); color: #fff;
@@ -977,118 +1023,6 @@ const CSS = `
     .action-card:hover { border-color: rgba(91,33,182,0.14); }
     .tag-btn:hover:not(.on) { background: rgba(0,0,0,0.07); }
     .ctrl:hover:not(.hi-on) { background: rgba(0,0,0,0.06); }
-  }
-
-  /* ── Landscape narrow ── */
-  /* ── 가로 좁은 화면 (landscape 폰) ──────────────────────
-     DOM 순서: [hdr] [composer] [stage]
-     grid-area로 시각 위치 재배치:
-       왼쪽 사이드: hdr (위) + composer (아래)
-       오른쪽: stage (전체)
-  ─────────────────────────────────────────────────────── */
-  @media (min-width: 640px) and (max-height: 540px) and (orientation: landscape) {
-    .frame {
-      display: grid;
-      width: 100vw;
-      height: 100dvh;
-      overflow: hidden;
-      grid-template-columns: 240px 1fr;
-      grid-template-rows: auto 1fr;
-      grid-template-areas:
-        "hdr      stage"
-        "composer stage";
-    }
-    .hdr {
-      grid-area: hdr;
-      width: auto;
-      border-bottom: none;
-      border-right: 1px solid var(--border);
-    }
-    .composer {
-      grid-area: composer;
-      width: auto;
-      border-bottom: none;
-      border-top: 1px solid var(--border);
-      border-right: 1px solid var(--border);
-      box-shadow: none;
-      overflow-y: auto;
-      padding: 10px 12px;
-    }
-    .stage {
-      grid-area: stage;
-      flex: none;
-      width: 100%;
-      height: 100%;
-      padding: 12px;
-    }
-    .tag-row { flex-wrap: wrap; }
-    .tag-btn { flex: 1 1 calc(50% - 3px); }
-    .ai-panel { grid-template-columns: 1fr; }
-  }
-
-  /* ── Landscape 데스크탑 ──────────────────────────────────
-     DOM 순서: [hdr] [composer] [stage]
-     grid-area로 시각 위치 재배치:
-       왼쪽: hdr (세로 전체)
-       가운데: stage (세로 전체)
-       오른쪽: composer (세로 전체)
-  ─────────────────────────────────────────────────────── */
-  @media (min-width: 900px) and (orientation: landscape) {
-    .app { align-items: center; padding: 28px; }
-    .frame {
-      display: grid;
-      flex-direction: unset;
-      width: min(calc(100vw - 56px), 1180px);
-      height: min(840px, calc(100dvh - 56px));
-      min-height: 0;
-      overflow: hidden;
-      border-radius: 24px;
-      border: 1px solid var(--border-2);
-      box-shadow: var(--sh3);
-      background: var(--bg);
-      grid-template-columns: 256px 1fr 316px;
-      grid-template-rows: 1fr;
-      /* hdr=왼쪽, stage=가운데, composer=오른쪽 */
-      grid-template-areas: "hdr stage composer";
-    }
-    .hdr {
-      grid-area: hdr;
-      width: auto;
-      height: 100%;
-      border-bottom: none;
-      border-right: 1px solid var(--border);
-      border-radius: 24px 0 0 24px;
-      background: var(--bg);
-    }
-    .hdr-body { height: 100%; padding: 22px 18px; }
-    .stage {
-      grid-area: stage;
-      flex: none;
-      width: 100%;
-      height: 100%;
-      padding: 20px;
-      padding-bottom: 20px;
-    }
-    .memo-list, .action-list, .skel-wrap { max-width: 540px; margin-left: auto; margin-right: auto; }
-    .composer {
-      grid-area: composer;
-      width: auto;
-      height: 100%;
-      border-bottom: none;
-      border-top: none;
-      border-left: 1px solid var(--border);
-      border-radius: 0 24px 24px 0;
-      box-shadow: none;
-      background: #fff;
-      padding: 22px 18px;
-      overflow-y: auto;
-    }
-    .action-ctrl { flex-direction: column; }
-    .ai-panel { grid-template-columns: 1fr; }
-  }
-
-  @media (min-width: 1180px) and (orientation: landscape) {
-    .frame { grid-template-columns: 276px 1fr 340px; }
   }
 
   /* ── 강제 레이아웃 토글 (헤더 버튼) ── */
@@ -1655,10 +1589,41 @@ function Composer({
 }) {
   const memoRef   = useRef(null);
   const actionRef = useRef(null);
-  const [aiOpen,  setAiOpen]  = useState(false);
-  const [aiMode,  setAiMode]  = useState("typo"); // "typo" | "sentence"
+  const cameraRef = useRef(null);
+  const [aiOpen,   setAiOpen]   = useState(false);
+  const [aiMode,   setAiMode]   = useState("typo"); // "typo" | "sentence"
+  const [ocrState, setOcrState] = useState("idle"); // "idle" | "scanning" | "error"
 
   const correcting = aiStatus.state === "loading";
+
+  const handleCameraClick = () => {
+    if (!aiSettings.apiKey) { setAiOpen(true); return; }
+    cameraRef.current?.click();
+  };
+
+  const handleImageSelect = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    setOcrState("scanning");
+    try {
+      const extracted = await extractTextFromImage({
+        apiKey: aiSettings.apiKey,
+        model: aiSettings.model || "gemini-2.5-flash",
+        file,
+      });
+      if (!extracted.trim()) {
+        setOcrState("error");
+        setTimeout(() => setOcrState("idle"), 2000);
+        return;
+      }
+      setMemoText((prev) => prev ? `${prev}\n${extracted}` : extracted);
+      setOcrState("idle");
+    } catch {
+      setOcrState("error");
+      setTimeout(() => setOcrState("idle"), 2500);
+    }
+  };
   const draftText  = activeView === "memos" ? memoText : actionText;
   const hasText    = draftText.trim().length > 0;
 
@@ -1732,7 +1697,10 @@ function Composer({
               />
               <div className="textarea-footer">
                 <span className="char-hint">
-                  {memoText.length > 0 ? `${memoText.length}자 · ⌘↵ 저장` : "⌘↵ 저장"}
+                  {ocrState === "scanning" ? "이미지 텍스트 추출 중…"
+                    : ocrState === "error"  ? "텍스트를 찾을 수 없음"
+                    : memoText.length > 0  ? `${memoText.length}자 · ⌘↵ 저장`
+                    : "⌘↵ 저장"}
                 </span>
                 <div className="btn-row">
                   {hasText && (
@@ -1745,6 +1713,16 @@ function Composer({
                       <X size={15} />
                     </button>
                   )}
+                  <button
+                    type="button"
+                    className={`icon-btn btn-camera${ocrState === "scanning" ? " scanning" : ""}`}
+                    disabled={ocrState === "scanning" || correcting}
+                    onClick={handleCameraClick}
+                    aria-label="카메라 OCR"
+                    title="사진에서 텍스트 추출"
+                  >
+                    <Camera size={16} />
+                  </button>
                   <button
                     type="button"
                     className={`icon-btn btn-ai${correcting ? " spinning" : ""}`}
@@ -1763,6 +1741,14 @@ function Composer({
                   >
                     <ArrowUp size={16} strokeWidth={2.5} />
                   </button>
+                  <input
+                    ref={cameraRef}
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    style={{ display: "none" }}
+                    onChange={handleImageSelect}
+                  />
                 </div>
               </div>
             </div>
@@ -2018,7 +2004,7 @@ function CorrectionModal({ original, corrected, onApply, onCancel }) {
 
 export default function IntelliMemoApp() {
   const [activeView,     setActiveView]     = useState("memos");
-  const [layoutMode,     setLayoutMode]     = useState("auto"); // "auto" | "portrait" | "landscape"
+  const [layoutMode,     setLayoutMode]     = useState("landscape"); // "portrait" | "landscape"
   const [memos,          setMemos]          = useState([]);
   const [actions,        setActions]        = useState([]);
   const [memoText,       setMemoText]       = useState("");
@@ -2220,7 +2206,7 @@ export default function IntelliMemoApp() {
     setAiError({ model: lastModel, message });
   }, [memoText, actionText, aiSettings]);
 
-  const frameClass = layoutMode === "auto" ? "frame" : `frame force-${layoutMode}`;
+  const frameClass = `frame force-${layoutMode}`;
 
   return (
     <main className="app">
