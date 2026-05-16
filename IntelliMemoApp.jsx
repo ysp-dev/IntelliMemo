@@ -203,6 +203,13 @@ const extractText = (res) => {
   return "";
 };
 
+const detectRateLimitType = (rawMsg, retryAfter) => {
+  const n = rawMsg.toLowerCase();
+  if (n.includes("per day") || n.includes("per_day") || n.includes("daily")) return "rpd";
+  if (n.includes("per minute") || n.includes("per_minute") || n.includes("tokens per minute")) return "rpm";
+  return retryAfter ? "rpm" : "unknown";
+};
+
 const apiError = (status, errorText) => {
   let msg = errorText;
   try { const p = JSON.parse(errorText); msg = p?.error?.message || p?.message || errorText; } catch {}
@@ -243,10 +250,20 @@ const correctKorean = async ({ apiKey, model, text, mode = DEFAULT_AI_CORRECTION
 
   if (!res.ok) {
     const body = await res.text();
+    let rawMsg = body;
+    try { const p = JSON.parse(body); rawMsg = p?.error?.message || body; } catch {}
+    const ra = res.headers.get("Retry-After");
+    if (res.status === 429) {
+      console.group("[IntelliMemo] 429 Rate Limit Debug");
+      console.log("Retry-After header:", ra);
+      console.log("Error body (raw):", body);
+      console.log("Parsed message:", rawMsg);
+      console.groupEnd();
+    }
     const err = new Error(apiError(res.status, body));
     err.status = res.status;
-    const ra = res.headers.get("Retry-After");
     if (ra) err.retryAfter = parseInt(ra, 10);
+    if (res.status === 429) err.limitType = detectRateLimitType(rawMsg, ra);
     throw err;
   }
 
@@ -282,10 +299,20 @@ const extractTextFromImage = async ({ apiKey, model, base64, mimeType = "image/j
   }
   if (!res.ok) {
     const body = await res.text();
+    let rawMsg = body;
+    try { const p = JSON.parse(body); rawMsg = p?.error?.message || body; } catch {}
+    const ra = res.headers.get("Retry-After");
+    if (res.status === 429) {
+      console.group("[IntelliMemo] 429 Rate Limit Debug");
+      console.log("Retry-After header:", ra);
+      console.log("Error body (raw):", body);
+      console.log("Parsed message:", rawMsg);
+      console.groupEnd();
+    }
     const err = new Error(apiError(res.status, body));
     err.status = res.status;
-    const ra = res.headers.get("Retry-After");
     if (ra) err.retryAfter = parseInt(ra, 10);
+    if (res.status === 429) err.limitType = detectRateLimitType(rawMsg, ra);
     throw err;
   }
   const data = await res.json();
@@ -297,6 +324,7 @@ const extractTextFromImage = async ({ apiKey, model, base64, mimeType = "image/j
 const CSS = `
   *, *::before, *::after { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body, #root { margin: 0; padding: 0; min-height: 100%; }
+  html { overscroll-behavior-x: none; }
 
   body {
     background: #f0eeea;
@@ -304,6 +332,7 @@ const CSS = `
                  'Pretendard', 'Noto Sans KR', system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
     color: #111;
+    overflow-x: hidden;
   }
 
   button, input, textarea, select {
@@ -1811,6 +1840,7 @@ function Composer({
   aiStatus,
   onCorrectDraft,
   onOcrError,
+  rateLimitInfo,
   rateLimitSec,
   onRateLimit,
   onDismissRateLimit,
@@ -1864,7 +1894,7 @@ function Composer({
       } catch (err) {
         if (err.status === 429) {
           setOcrState("idle");
-          onRateLimit(err.retryAfter ?? 60);
+          onRateLimit(err.limitType ?? "unknown", err.retryAfter ?? 60);
           return;
         }
         lastError = err;
@@ -2125,12 +2155,25 @@ function Composer({
         </>
       )}
 
-      {rateLimitSec > 0 && (
+      {rateLimitInfo && (
         <div className="rate-limit-bar">
-          <span>⏱ {rateLimitSec}초 후 재시도 가능</span>
-          <button type="button" className="rate-limit-dismiss" onClick={onDismissRateLimit}>
-            무시하고 재시도
-          </button>
+          <span>
+            {rateLimitInfo.type === "rpm"
+              ? `⏱ ${rateLimitSec}초 후 재시도 가능`
+              : rateLimitInfo.type === "rpd"
+                ? "일일 요청 한도 초과 · 내일 오후 4~5시 이후 이용 가능"
+                : "요청 한도 초과 · 한도 유형을 알 수 없습니다"}
+          </span>
+          <div style={{ display: "flex", gap: 10 }}>
+            {rateLimitInfo.type === "rpm" && (
+              <button type="button" className="rate-limit-dismiss" onClick={onDismissRateLimit}>
+                무시하고 재시도
+              </button>
+            )}
+            <button type="button" className="rate-limit-dismiss" onClick={onDismissRateLimit}>
+              중단
+            </button>
+          </div>
         </div>
       )}
 
@@ -2547,7 +2590,7 @@ export default function IntelliMemoApp() {
   const [tagFilter,      setTagFilter]      = useState("all");
   const [searchQuery,    setSearchQuery]    = useState("");
   const [searchOpen,     setSearchOpen]     = useState(false);
-  const [rateLimitUntil, setRateLimitUntil] = useState(0);
+  const [rateLimitInfo,  setRateLimitInfo]  = useState(null); // { type: "rpm"|"rpd"|"unknown", until?: number }
   const [rateLimitSec,   setRateLimitSec]   = useState(0);
   const [aiSettings,       setAiSettings]       = useState({ apiKey: "", model: DEFAULT_AI_MODEL });
   const [aiStatus,         setAiStatus]         = useState({ state: "idle", message: `Gemini · ${DEFAULT_AI_MODEL}` });
@@ -2596,18 +2639,18 @@ export default function IntelliMemoApp() {
     return () => mq.removeEventListener("change", handler);
   }, []);
 
-  // ── Rate limit countdown ──
+  // ── Rate limit countdown (RPM 전용) ──
   useEffect(() => {
-    if (!rateLimitUntil) { setRateLimitSec(0); return; }
+    if (rateLimitInfo?.type !== "rpm") { setRateLimitSec(0); return; }
     const update = () => {
-      const sec = Math.ceil((rateLimitUntil - Date.now()) / 1000);
-      if (sec <= 0) { setRateLimitSec(0); setRateLimitUntil(0); }
+      const sec = Math.ceil((rateLimitInfo.until - Date.now()) / 1000);
+      if (sec <= 0) { setRateLimitSec(0); setRateLimitInfo(null); }
       else setRateLimitSec(sec);
     };
     update();
     const id = setInterval(update, 1000);
     return () => clearInterval(id);
-  }, [rateLimitUntil]);
+  }, [rateLimitInfo]);
 
   // ── Tick ──
   useEffect(() => {
@@ -2762,8 +2805,12 @@ export default function IntelliMemoApp() {
         return;
       } catch (err) {
         if (err.status === 429) {
-          const sec = err.retryAfter ?? 60;
-          setRateLimitUntil(Date.now() + sec * 1000);
+          const limitType = err.limitType ?? "unknown";
+          if (limitType === "rpm") {
+            setRateLimitInfo({ type: "rpm", until: Date.now() + (err.retryAfter ?? 60) * 1000 });
+          } else {
+            setRateLimitInfo({ type: limitType });
+          }
           setAiStatus({ state: "rate-limited", message: "요청 한도 초과" });
           return;
         }
@@ -2811,9 +2858,13 @@ export default function IntelliMemoApp() {
           aiStatus={aiStatus}
           onCorrectDraft={correctDraft}
           onOcrError={(err) => setAiError(err)}
+          rateLimitInfo={rateLimitInfo}
           rateLimitSec={rateLimitSec}
-          onRateLimit={(sec) => setRateLimitUntil(Date.now() + sec * 1000)}
-          onDismissRateLimit={() => setRateLimitUntil(0)}
+          onRateLimit={(limitType, sec) => {
+            if (limitType === "rpm") setRateLimitInfo({ type: "rpm", until: Date.now() + sec * 1000 });
+            else setRateLimitInfo({ type: limitType });
+          }}
+          onDismissRateLimit={() => setRateLimitInfo(null)}
         />
 
         <section
