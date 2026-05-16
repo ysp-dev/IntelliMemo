@@ -15,6 +15,7 @@ import {
   Monitor,
   Pencil,
   RotateCcw,
+  Search,
   Smartphone,
   Sparkles,
   Trash2,
@@ -610,6 +611,26 @@ const CSS = `
   }
   .layout-toggle-btn:hover { background: rgba(0,0,0,0.09); color: var(--t1); }
   .layout-toggle-btn.reload-btn { color: var(--t3); }
+  .layout-toggle-btn.search-active { background: rgba(0,0,0,0.09); color: var(--t1); }
+
+  .search-bar-wrap { overflow: hidden; }
+  .search-bar {
+    display: flex; align-items: center; gap: 8px;
+    height: 36px; padding: 0 12px;
+    border-radius: var(--r-m);
+    background: rgba(0,0,0,0.055); border: 1px solid var(--border);
+  }
+  .search-bar svg { color: var(--t3); flex-shrink: 0; }
+  .search-bar input {
+    flex: 1; border: none; background: transparent;
+    font-size: 13px; color: var(--t1); outline: none;
+  }
+  .search-bar input::placeholder { color: var(--t3); }
+  .search-clear-btn {
+    display: flex; align-items: center; justify-content: center;
+    color: var(--t3); flex-shrink: 0;
+  }
+  .search-highlight { background: rgba(245,158,11,0.25); border-radius: 2px; }
 
   .memo-body {
     margin: 0;
@@ -1299,8 +1320,9 @@ function TagBadge({ tag }) {
   );
 }
 
-function Header({ activeView, setActiveView, actionFilter, setActionFilter, compact, layoutMode, onToggleLayout }) {
+function Header({ activeView, setActiveView, actionFilter, setActionFilter, compact, layoutMode, onToggleLayout, searchOpen, onToggleSearch, searchQuery, setSearchQuery }) {
   const isLandscape = layoutMode === "landscape";
+  const searchRef = useRef(null);
   return (
     <header className={`hdr${compact ? " compact" : ""}`}>
       <div className="hdr-body">
@@ -1309,6 +1331,15 @@ function Header({ activeView, setActiveView, actionFilter, setActionFilter, comp
             <h1>Intelligent Memo</h1>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <button
+              type="button"
+              className={`layout-toggle-btn${searchOpen ? " search-active" : ""}`}
+              onClick={onToggleSearch}
+              aria-label="검색"
+              title="검색"
+            >
+              <Search size={15} />
+            </button>
             <button
               type="button"
               className={`layout-toggle-btn${isLandscape ? " landscape-active" : ""}`}
@@ -1383,6 +1414,36 @@ function Header({ activeView, setActiveView, actionFilter, setActionFilter, comp
                   {f.label}
                 </button>
               ))}
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence initial={false}>
+          {searchOpen && (
+            <motion.div
+              className="search-bar-wrap"
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.15 }}
+              onAnimationComplete={() => searchRef.current?.focus()}
+            >
+              <div className="search-bar">
+                <Search size={13} />
+                <input
+                  ref={searchRef}
+                  type="text"
+                  placeholder="검색..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onKeyDown={(e) => e.key === "Escape" && onToggleSearch()}
+                />
+                {searchQuery && (
+                  <button type="button" className="search-clear-btn" onClick={() => setSearchQuery("")}>
+                    <X size={13} />
+                  </button>
+                )}
+              </div>
             </motion.div>
           )}
         </AnimatePresence>
@@ -2441,6 +2502,8 @@ export default function IntelliMemoApp() {
   const [actionPriority, setActionPriority] = useState("normal");
   const [actionFilter,   setActionFilter]   = useState("all");
   const [tagFilter,      setTagFilter]      = useState("all");
+  const [searchQuery,    setSearchQuery]    = useState("");
+  const [searchOpen,     setSearchOpen]     = useState(false);
   const [aiSettings,       setAiSettings]       = useState({ apiKey: "", model: DEFAULT_AI_MODEL });
   const [aiStatus,         setAiStatus]         = useState({ state: "idle", message: `Gemini · ${DEFAULT_AI_MODEL}` });
   const [aiError,          setAiError]          = useState(null);
@@ -2515,12 +2578,21 @@ export default function IntelliMemoApp() {
     let list = actions;
     if (actionFilter === "active") list = list.filter((a) => !a.done);
     if (actionFilter === "done")   list = list.filter((a) => a.done);
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase();
+      list = list.filter((a) => a.text.toLowerCase().includes(q));
+    }
     return list;
-  }, [actions, actionFilter]);
+  }, [actions, actionFilter, searchQuery]);
 
-  const filteredMemos = useMemo(() =>
-    tagFilter === "all" ? memos : memos.filter((m) => m.tag === tagFilter),
-  [memos, tagFilter]);
+  const filteredMemos = useMemo(() => {
+    let list = tagFilter === "all" ? memos : memos.filter((m) => m.tag === tagFilter);
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase();
+      list = list.filter((m) => m.text.toLowerCase().includes(q));
+    }
+    return list;
+  }, [memos, tagFilter, searchQuery]);
 
   // Group memos by date
   const memoGroups = useMemo(() => {
@@ -2656,6 +2728,10 @@ export default function IntelliMemoApp() {
           compact={scrollTop > 20}
           layoutMode={layoutMode}
           onToggleLayout={() => setLayoutMode((m) => (m === "landscape" ? "portrait" : "landscape"))}
+          searchOpen={searchOpen}
+          onToggleSearch={() => { setSearchOpen((o) => { if (o) setSearchQuery(""); return !o; }); }}
+          searchQuery={searchQuery}
+          setSearchQuery={setSearchQuery}
         />
 
         <Composer
