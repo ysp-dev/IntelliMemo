@@ -531,6 +531,11 @@ const CSS = `
   }
   .stage::-webkit-scrollbar { display: none; }
 
+  .app-footer {
+    text-align: center; padding: 20px 0 4px;
+    font-size: 11px; color: var(--t3); letter-spacing: 0.03em;
+  }
+
   /* ── Section label ── */
   .sec-label {
     display: flex; align-items: center; justify-content: space-between;
@@ -943,7 +948,7 @@ const CSS = `
   .ctrl svg { display: block; flex-shrink: 0; }
   .ctrl input[type="date"] {
     font-size: 12px; font-weight: 600; color: var(--t1);
-    color-scheme: light; cursor: pointer; flex: 1; text-align: center;
+    color-scheme: light; cursor: pointer; text-align: center;
   }
   .ctrl input[type="date"]::-webkit-calendar-picker-indicator { display: none; }
 
@@ -3028,6 +3033,7 @@ export default function IntelliMemoApp() {
               </motion.div>
             )}
           </AnimatePresence>
+          <footer className="app-footer">Made by Brian Park</footer>
         </section>
       </div>
 
