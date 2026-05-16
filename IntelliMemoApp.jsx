@@ -13,9 +13,15 @@ import {
   Send,
   Sparkles,
   Trash2,
+  Zap,
 } from "lucide-react";
 
 const TAGS = ["#업무", "#아이디어", "#개인"];
+const TAG_COLORS = {
+  "#업무": { bg: "rgba(124,58,237,0.18)", border: "rgba(124,58,237,0.35)", text: "#a78bfa" },
+  "#아이디어": { bg: "rgba(6,182,212,0.15)", border: "rgba(6,182,212,0.32)", text: "#22d3ee" },
+  "#개인": { bg: "rgba(236,72,153,0.14)", border: "rgba(236,72,153,0.3)", text: "#f472b6" },
+};
 const ACTION_FILTERS = [
   { key: "all", label: "전체" },
   { key: "active", label: "진행 중" },
@@ -51,9 +57,7 @@ const saveStoredJson = async (key, value) => {
   try {
     if (!window.storage?.set) return;
     await window.storage.set(key, JSON.stringify(value));
-  } catch {
-    // Storage failures should not interrupt capture flow.
-  }
+  } catch {}
 };
 
 const relativeTime = (iso, tick) => {
@@ -61,12 +65,10 @@ const relativeTime = (iso, tick) => {
   const diff = Math.max(0, tick - then);
   const minutes = Math.floor(diff / 60000);
   const hours = Math.floor(diff / 3600000);
-
   if (minutes < 1) return "방금";
   if (minutes < 60) return `${minutes}분 전`;
   if (hours < 24) return `${hours}시간 전`;
   if (hours < 48) return "어제";
-
   const date = new Date(iso);
   return `${date.getMonth() + 1}월 ${date.getDate()}일`;
 };
@@ -75,8 +77,7 @@ const isPastDue = (date, done) => {
   if (!date || done) return false;
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const due = new Date(`${date}T00:00:00`);
-  return due < today;
+  return new Date(`${date}T00:00:00`) < today;
 };
 
 const formatDueDate = (date) => {
@@ -93,12 +94,10 @@ const copyToClipboard = async (text) => {
     await navigator.clipboard.writeText(text);
     return;
   }
-
   const textarea = document.createElement("textarea");
   textarea.value = text;
   textarea.setAttribute("readonly", "");
-  textarea.style.position = "fixed";
-  textarea.style.top = "-1000px";
+  textarea.style.cssText = "position:fixed;top:-9999px";
   document.body.appendChild(textarea);
   textarea.select();
   document.execCommand("copy");
@@ -106,13 +105,13 @@ const copyToClipboard = async (text) => {
 };
 
 const getModelFallbacks = (selectedModel) => {
-  const modelKeys = AI_MODELS.map((model) => model.key);
+  const modelKeys = AI_MODELS.map((m) => m.key);
   const startIndex = Math.max(0, modelKeys.indexOf(selectedModel));
   return modelKeys.slice(startIndex);
 };
 
 const normalizeAiModel = (model) =>
-  AI_MODELS.some((option) => option.key === model) ? model : DEFAULT_AI_MODEL;
+  AI_MODELS.some((o) => o.key === model) ? model : DEFAULT_AI_MODEL;
 
 const extractResponseText = (response) => {
   for (const candidate of response.candidates ?? []) {
@@ -122,60 +121,32 @@ const extractResponseText = (response) => {
       .trim();
     if (text) return text;
   }
-
   return "";
 };
 
 const isResponseTruncated = (response) =>
-  (response.candidates ?? []).some((candidate) => candidate.finishReason === "MAX_TOKENS");
+  (response.candidates ?? []).some((c) => c.finishReason === "MAX_TOKENS");
 
 const summarizeApiError = (status, errorText) => {
   let message = errorText;
-
   try {
     const parsed = JSON.parse(errorText);
     message = parsed?.error?.message || parsed?.message || errorText;
-  } catch {
-    // Some network layers return plain text or an empty body.
-  }
-
-  const normalizedMessage = message.toLowerCase();
-
-  if (
-    normalizedMessage.includes("api key not valid") ||
-    normalizedMessage.includes("api_key_invalid") ||
-    normalizedMessage.includes("invalid api key")
-  ) {
+  } catch {}
+  const n = message.toLowerCase();
+  if (n.includes("api key not valid") || n.includes("api_key_invalid") || n.includes("invalid api key"))
     return "Gemini API 키를 확인해주세요.";
-  }
-  if (
-    normalizedMessage.includes("quota") ||
-    normalizedMessage.includes("rate limit") ||
-    normalizedMessage.includes("resource_exhausted")
-  ) {
+  if (n.includes("quota") || n.includes("rate limit") || n.includes("resource_exhausted"))
     return "Gemini API 사용량 한도 또는 요청 빈도를 확인해주세요.";
-  }
-  if (normalizedMessage.includes("billing")) {
-    return "Google Cloud 결제 설정 또는 Gemini API 사용 권한을 확인해주세요.";
-  }
-  if (
-    normalizedMessage.includes("permission") ||
-    normalizedMessage.includes("forbidden") ||
-    normalizedMessage.includes("access")
-  ) {
+  if (n.includes("billing")) return "Google Cloud 결제 설정 또는 Gemini API 사용 권한을 확인해주세요.";
+  if (n.includes("permission") || n.includes("forbidden") || n.includes("access"))
     return "Gemini API 키 권한을 확인해주세요.";
-  }
-  if (status === 400) {
-    return "Gemini API 키 또는 요청 형식을 확인해주세요.";
-  }
+  if (status === 400) return "Gemini API 키 또는 요청 형식을 확인해주세요.";
   if (status === 401) return "Gemini API 키를 확인해주세요.";
   if (status === 403) return "Gemini API 키 권한 또는 결제 설정을 확인해주세요.";
-  if (status === 404 && normalizedMessage.includes("model")) {
-    return "선택한 모델을 사용할 수 없습니다.";
-  }
+  if (status === 404 && n.includes("model")) return "선택한 모델을 사용할 수 없습니다.";
   if (status === 429) return "Gemini API 사용량 한도 또는 요청 빈도를 확인해주세요.";
   if (status >= 500) return "Gemini API 서버 응답이 불안정합니다.";
-
   return message || `Gemini API 오류 ${status}`;
 };
 
@@ -190,21 +161,10 @@ const correctKoreanText = async ({ apiKey, model, text, type }) => {
       `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
       {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-goog-api-key": apiKey,
-        },
+        headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
         body: JSON.stringify({
-          contents: [
-            {
-              role: "user",
-              parts: [{ text: prompt }],
-            },
-          ],
-          generationConfig: {
-            maxOutputTokens: 1024,
-            temperature: 0.2,
-          },
+          contents: [{ role: "user", parts: [{ text: prompt }] }],
+          generationConfig: { maxOutputTokens: 1024, temperature: 0.2 },
         }),
       },
     );
@@ -222,17 +182,1199 @@ const correctKoreanText = async ({ apiKey, model, text, type }) => {
   }
 
   const data = await response.json();
-  if (isResponseTruncated(data)) {
-    throw new Error("교정 결과가 너무 길어 중간에 끊겼습니다. 문장을 조금 나눠서 다시 교정해주세요.");
-  }
+  if (isResponseTruncated(data))
+    throw new Error("교정 결과가 너무 길어 중간에 끊겼습니다. 문장을 나눠서 다시 교정해주세요.");
   const corrected = extractResponseText(data);
   if (!corrected) throw new Error("교정 결과가 비어 있습니다.");
   return corrected;
 };
 
+// ─── CSS ────────────────────────────────────────────────────────────────────
+
+const CSS = `
+  @import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@400;500;600;700;800&display=swap');
+
+  html, body, #root {
+    margin: 0;
+    min-height: 100%;
+  }
+
+  body {
+    background: #060608;
+  }
+
+  *, *::before, *::after {
+    box-sizing: border-box;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  button, input, textarea, select {
+    font: inherit;
+  }
+
+  button {
+    border: 0;
+    cursor: pointer;
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  :root {
+    color-scheme: dark;
+    --bg: #060608;
+    --surface: #0d0d14;
+    --surface2: #12121c;
+    --text: rgba(255,255,255,0.94);
+    --text-muted: rgba(255,255,255,0.52);
+    --text-faint: rgba(255,255,255,0.28);
+    --line: rgba(255,255,255,0.07);
+    --line-strong: rgba(255,255,255,0.12);
+
+    --violet: #7c3aed;
+    --violet-soft: rgba(124,58,237,0.18);
+    --violet-glow: rgba(124,58,237,0.28);
+    --cyan: #06b6d4;
+    --cyan-soft: rgba(6,182,212,0.14);
+    --cyan-glow: rgba(6,182,212,0.22);
+    --rose: #f43f5e;
+    --amber: #f59e0b;
+
+    font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', system-ui, sans-serif;
+    letter-spacing: -0.01em;
+  }
+
+  /* ── Aurora background ── */
+  .app-shell {
+    position: relative;
+    min-height: 100vh;
+    min-height: 100dvh;
+    overflow: hidden;
+    display: flex;
+    justify-content: center;
+    background: var(--bg);
+    color: var(--text);
+  }
+
+  .aurora {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    overflow: hidden;
+    z-index: 0;
+  }
+
+  .aurora-orb {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(80px);
+    opacity: 0.55;
+  }
+
+  .aurora-orb-1 {
+    width: 520px;
+    height: 520px;
+    top: -180px;
+    left: -140px;
+    background: radial-gradient(circle, rgba(124,58,237,0.7), rgba(67,20,180,0.3) 60%, transparent);
+    animation: orb1 18s ease-in-out infinite alternate;
+  }
+
+  .aurora-orb-2 {
+    width: 440px;
+    height: 440px;
+    top: -60px;
+    right: -120px;
+    background: radial-gradient(circle, rgba(6,182,212,0.55), rgba(2,100,150,0.25) 60%, transparent);
+    animation: orb2 22s ease-in-out infinite alternate;
+  }
+
+  .aurora-orb-3 {
+    width: 360px;
+    height: 360px;
+    bottom: 100px;
+    right: -80px;
+    background: radial-gradient(circle, rgba(244,63,94,0.35), transparent 65%);
+    animation: orb3 26s ease-in-out infinite alternate;
+  }
+
+  .aurora-orb-4 {
+    width: 300px;
+    height: 300px;
+    bottom: 60px;
+    left: -60px;
+    background: radial-gradient(circle, rgba(124,58,237,0.3), transparent 65%);
+    animation: orb4 20s ease-in-out infinite alternate;
+  }
+
+  @keyframes orb1 {
+    0%   { transform: translate(0, 0) scale(1); }
+    100% { transform: translate(60px, 80px) scale(1.1); }
+  }
+  @keyframes orb2 {
+    0%   { transform: translate(0, 0) scale(1); }
+    100% { transform: translate(-50px, 60px) scale(0.92); }
+  }
+  @keyframes orb3 {
+    0%   { transform: translate(0, 0) scale(1); }
+    100% { transform: translate(-40px, -50px) scale(1.08); }
+  }
+  @keyframes orb4 {
+    0%   { transform: translate(0, 0) scale(1); }
+    100% { transform: translate(30px, -40px) scale(0.95); }
+  }
+
+  .noise-overlay {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 1;
+    opacity: 0.028;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-size: 180px;
+  }
+
+  /* ── Phone frame ── */
+  .phone-frame {
+    position: relative;
+    z-index: 2;
+    width: min(100vw, 430px);
+    min-height: 100vh;
+    min-height: 100dvh;
+    overflow: hidden;
+    border-left: 1px solid rgba(255,255,255,0.055);
+    border-right: 1px solid rgba(255,255,255,0.055);
+  }
+
+  /* ── Top chrome / header ── */
+  .top-chrome {
+    position: fixed;
+    z-index: 20;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: min(100vw, 430px);
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: 14px;
+    background: linear-gradient(180deg, rgba(6,6,8,0.9) 0%, rgba(6,6,8,0.6) 100%);
+    backdrop-filter: blur(28px) saturate(1.4);
+    -webkit-backdrop-filter: blur(28px) saturate(1.4);
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    transition: padding-bottom 200ms ease;
+  }
+
+  .top-chrome.is-compact {
+    padding-bottom: 10px;
+    background: rgba(6,6,8,0.82);
+    border-color: rgba(255,255,255,0.09);
+  }
+
+  .header-inner {
+    margin: 0 auto;
+    max-width: 430px;
+    padding: 10px 16px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .header-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .brand-block {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .brand-eyebrow {
+    font-family: 'SF Mono', ui-monospace, Menlo, Consolas, monospace;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    background: linear-gradient(90deg, var(--violet) 0%, var(--cyan) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .brand-title {
+    margin: 0;
+    font-size: 22px;
+    font-weight: 800;
+    line-height: 1.1;
+    letter-spacing: -0.03em;
+    color: var(--text);
+  }
+
+  .top-chrome.is-compact .brand-title {
+    font-size: 18px;
+  }
+
+  .ai-orb {
+    width: 44px;
+    height: 44px;
+    display: grid;
+    place-items: center;
+    border-radius: 14px;
+    position: relative;
+    overflow: hidden;
+    background: linear-gradient(135deg, rgba(124,58,237,0.22), rgba(6,182,212,0.16));
+    border: 1px solid rgba(124,58,237,0.3);
+    color: #a78bfa;
+    box-shadow: 0 0 20px rgba(124,58,237,0.18), inset 0 1px 0 rgba(255,255,255,0.1);
+  }
+
+  .ai-orb::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, rgba(255,255,255,0.08), transparent 50%);
+    border-radius: inherit;
+  }
+
+  /* ── Mode tabs ── */
+  .mode-tabs {
+    position: relative;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0;
+    padding: 4px;
+    border-radius: 14px;
+    background: rgba(255,255,255,0.055);
+    border: 1px solid var(--line);
+    overflow: hidden;
+  }
+
+  .mode-indicator {
+    position: absolute;
+    top: 4px;
+    left: 4px;
+    width: calc(50% - 4px);
+    height: calc(100% - 8px);
+    border-radius: 10px;
+    background: linear-gradient(135deg, rgba(124,58,237,0.9), rgba(100,40,220,0.9));
+    box-shadow: 0 4px 16px rgba(124,58,237,0.35), inset 0 1px 0 rgba(255,255,255,0.15);
+  }
+
+  .mode-tabs button {
+    position: relative;
+    z-index: 1;
+    min-height: 46px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    background: transparent;
+    border-radius: 10px;
+    color: var(--text-muted);
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    transition: color 180ms ease;
+  }
+
+  .mode-tabs button.is-active {
+    color: #fff;
+  }
+
+  /* ── Filter tabs ── */
+  .filter-tabs {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px;
+    border-radius: 12px;
+    background: rgba(255,255,255,0.045);
+    border: 1px solid var(--line);
+    min-height: 42px;
+  }
+
+  .filter-tabs-icon {
+    margin: 0 6px;
+    color: var(--text-faint);
+    flex-shrink: 0;
+  }
+
+  .filter-tabs button {
+    flex: 1;
+    min-height: 34px;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 12px;
+    font-weight: 600;
+    transition: background 160ms ease, color 160ms ease;
+  }
+
+  .filter-tabs button.is-active {
+    background: rgba(255,255,255,0.1);
+    color: var(--text);
+  }
+
+  /* ── Scroll stage ── */
+  .scroll-stage {
+    width: min(100vw, 430px);
+    height: 100vh;
+    height: 100dvh;
+    overflow-y: auto;
+    scrollbar-width: none;
+    padding: 184px 14px 240px;
+  }
+
+  .scroll-stage::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* ── Stats bar ── */
+  .stats-bar {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 14px;
+  }
+
+  .stat-chip {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid var(--line);
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text-muted);
+    letter-spacing: 0.02em;
+  }
+
+  .stat-chip .stat-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+  }
+
+  .stat-chip.violet .stat-dot { background: var(--violet); box-shadow: 0 0 6px var(--violet); }
+  .stat-chip.cyan .stat-dot   { background: var(--cyan);   box-shadow: 0 0 6px var(--cyan); }
+  .stat-chip.rose .stat-dot   { background: var(--rose);   box-shadow: 0 0 6px var(--rose); }
+
+  /* ── Memo list (bento style) ── */
+  .memo-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    border-radius: 18px;
+    overflow: hidden;
+    border: 1px solid rgba(255,255,255,0.07);
+    background: rgba(255,255,255,0.025);
+    backdrop-filter: blur(24px);
+  }
+
+  .swipe-shell {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .memo-list .swipe-shell {
+    border-bottom: 1px solid rgba(255,255,255,0.055);
+  }
+
+  .memo-list .swipe-shell:last-child {
+    border-bottom: 0;
+  }
+
+  .delete-reveal {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    padding-right: 20px;
+    background: linear-gradient(90deg, transparent 30%, rgba(244,63,94,0.55));
+    color: #fff;
+  }
+
+  /* ── Memo card ── */
+  .memo-card {
+    position: relative;
+    width: 100%;
+    min-height: 84px;
+    padding: 14px 14px 15px;
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    touch-action: pan-y;
+    cursor: pointer;
+    transition: background 160ms ease;
+  }
+
+  .memo-card:active {
+    background: rgba(255,255,255,0.04);
+  }
+
+  .memo-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+
+  .memo-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
+
+  .tag-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 10px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    white-space: nowrap;
+  }
+
+  .memo-time {
+    font-family: 'SF Mono', ui-monospace, monospace;
+    font-size: 10px;
+    color: var(--text-faint);
+    white-space: nowrap;
+  }
+
+  .memo-body {
+    margin: 0;
+    color: rgba(255,255,255,0.87);
+    font-size: 14px;
+    line-height: 1.6;
+    font-weight: 400;
+    overflow-wrap: anywhere;
+  }
+
+  .memo-copy {
+    flex-shrink: 0;
+    width: 32px;
+    height: 32px;
+    min-width: 32px;
+    min-height: 32px;
+    display: grid;
+    place-items: center;
+    border-radius: 10px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.08);
+    color: var(--text-muted);
+    transition: background 160ms ease, color 160ms ease, border-color 160ms ease;
+  }
+
+  .memo-copy.is-copied {
+    background: rgba(124,58,237,0.22);
+    border-color: rgba(124,58,237,0.4);
+    color: #a78bfa;
+  }
+
+  .memo-edit {
+    width: 100%;
+    min-height: 72px;
+    margin-top: 6px;
+    resize: none;
+    border: 1px solid rgba(124,58,237,0.3);
+    outline: 0;
+    color: var(--text);
+    background: rgba(124,58,237,0.08);
+    border-radius: 10px;
+    padding: 10px 12px;
+    line-height: 1.6;
+    font-size: 13px;
+    caret-color: #a78bfa;
+  }
+
+  /* ── Action list ── */
+  .action-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .action-card {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    min-height: 78px;
+    padding: 14px 16px;
+    border-radius: 16px;
+    background: rgba(255,255,255,0.038);
+    border: 1px solid var(--line);
+    backdrop-filter: blur(20px);
+    touch-action: pan-y;
+    transition: opacity 200ms ease, filter 200ms ease;
+  }
+
+  .action-card.is-high {
+    background: rgba(124,58,237,0.07);
+    border-color: rgba(124,58,237,0.22);
+    box-shadow: inset 2px 0 0 var(--violet), 0 0 28px rgba(124,58,237,0.1);
+  }
+
+  .action-card.is-done {
+    opacity: 0.38;
+    filter: saturate(0.5);
+  }
+
+  .action-text {
+    margin: 0;
+    color: var(--text);
+    font-size: 15px;
+    line-height: 1.45;
+    font-weight: 520;
+    overflow-wrap: anywhere;
+  }
+
+  .action-card.is-done .action-text {
+    text-decoration: line-through;
+    color: var(--text-muted);
+  }
+
+  /* ── Check mark ── */
+  .check-wrap {
+    flex-shrink: 0;
+    width: 42px;
+    height: 42px;
+    display: grid;
+    place-items: center;
+    border-radius: 13px;
+    color: var(--text-faint);
+    background: rgba(255,255,255,0.05);
+    border: 1px solid var(--line);
+    transition: background 200ms ease, border-color 200ms ease, color 200ms ease;
+  }
+
+  .check-wrap.is-done {
+    background: linear-gradient(135deg, rgba(124,58,237,0.85), rgba(100,40,220,0.85));
+    border-color: rgba(124,58,237,0.5);
+    color: #fff;
+    box-shadow: 0 4px 16px rgba(124,58,237,0.3);
+  }
+
+  /* ── Action meta ── */
+  .action-meta {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 6px;
+  }
+
+  .meta-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 9px;
+    border-radius: 999px;
+    font-family: 'SF Mono', ui-monospace, monospace;
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--text-faint);
+    background: rgba(255,255,255,0.05);
+    border: 1px solid var(--line);
+  }
+
+  .meta-tag.is-past {
+    color: rgba(245,158,11,0.9);
+    background: rgba(245,158,11,0.1);
+    border-color: rgba(245,158,11,0.25);
+  }
+
+  .priority-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 9px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--text-faint);
+    background: rgba(255,255,255,0.05);
+    border: 1px solid var(--line);
+  }
+
+  .priority-pill.is-high {
+    color: #fbbf24;
+    background: rgba(245,158,11,0.12);
+    border-color: rgba(245,158,11,0.28);
+  }
+
+  /* ── Empty state ── */
+  .empty-state {
+    min-height: 280px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    text-align: center;
+  }
+
+  .empty-icon-wrap {
+    width: 64px;
+    height: 64px;
+    display: grid;
+    place-items: center;
+    border-radius: 20px;
+    background: linear-gradient(135deg, var(--violet-soft), var(--cyan-soft));
+    border: 1px solid rgba(124,58,237,0.2);
+    color: #a78bfa;
+  }
+
+  .empty-label {
+    color: var(--text-muted);
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 1.5;
+    max-width: 240px;
+  }
+
+  /* ── Skeleton ── */
+  .skeleton-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .skeleton-card {
+    height: 80px;
+    border-radius: 16px;
+    border: 1px solid var(--line);
+    background: linear-gradient(100deg,
+      rgba(255,255,255,0.03) 25%,
+      rgba(124,58,237,0.07) 50%,
+      rgba(255,255,255,0.03) 75%);
+    background-size: 240% 100%;
+    animation: shimmer 1.4s ease-in-out infinite;
+  }
+
+  .skeleton-card:nth-child(2) { height: 96px; }
+  .skeleton-card:nth-child(3) { height: 68px; }
+
+  @keyframes shimmer {
+    0%   { background-position: 120% 0; }
+    100% { background-position: -120% 0; }
+  }
+
+  /* ── Bottom composer ── */
+  .bottom-sheet {
+    position: fixed;
+    z-index: 30;
+    left: 50%;
+    bottom: 0;
+    transform: translateX(-50%);
+    width: min(calc(100vw - 16px), 414px);
+    padding: 14px 14px calc(14px + env(safe-area-inset-bottom));
+    border-radius: 26px 26px 0 0;
+    background: rgba(10,10,18,0.88);
+    border: 1px solid rgba(255,255,255,0.09);
+    border-bottom: 0;
+    backdrop-filter: blur(32px) saturate(1.3);
+    -webkit-backdrop-filter: blur(32px) saturate(1.3);
+    box-shadow:
+      0 -1px 0 rgba(124,58,237,0.12),
+      0 -30px 80px rgba(0,0,0,0.5);
+  }
+
+  /* handle bar */
+  .bottom-sheet::before {
+    content: '';
+    display: block;
+    width: 36px;
+    height: 4px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.15);
+    margin: 0 auto 12px;
+  }
+
+  /* ── Tag row ── */
+  .chip-row {
+    display: flex;
+    gap: 7px;
+    margin-bottom: 10px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .chip-row::-webkit-scrollbar { display: none; }
+
+  .tag-choice {
+    flex: 1;
+    min-height: 42px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255,255,255,0.055);
+    border: 1px solid var(--line);
+    color: var(--text-muted);
+    transition: background 160ms ease, border-color 160ms ease, color 160ms ease;
+  }
+
+  .tag-choice[data-tag="#업무"].is-active   { background: rgba(124,58,237,0.2); border-color: rgba(124,58,237,0.38); color: #a78bfa; }
+  .tag-choice[data-tag="#아이디어"].is-active { background: rgba(6,182,212,0.16); border-color: rgba(6,182,212,0.34); color: #22d3ee; }
+  .tag-choice[data-tag="#개인"].is-active   { background: rgba(236,72,153,0.16); border-color: rgba(236,72,153,0.32); color: #f472b6; }
+
+  /* ── Composer line ── */
+  .composer-line {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 56px;
+    padding: 5px 5px 5px 16px;
+    border-radius: 16px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.09);
+    transition: border-color 180ms ease, box-shadow 180ms ease;
+  }
+
+  .composer-line:focus-within {
+    border-color: rgba(124,58,237,0.4);
+    box-shadow: 0 0 0 3px rgba(124,58,237,0.08), 0 0 20px rgba(124,58,237,0.08);
+  }
+
+  .composer-line input {
+    flex: 1;
+    min-width: 0;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    color: var(--text);
+    font-size: 15px;
+    font-weight: 500;
+    caret-color: #a78bfa;
+  }
+
+  .composer-line input::placeholder {
+    color: rgba(255,255,255,0.3);
+  }
+
+  .send-btn {
+    flex-shrink: 0;
+    width: 46px;
+    height: 46px;
+    display: grid;
+    place-items: center;
+    border-radius: 12px;
+    background: linear-gradient(135deg, #7c3aed, #5b21b6);
+    color: #fff;
+    box-shadow: 0 4px 16px rgba(124,58,237,0.35);
+    transition: transform 120ms ease, box-shadow 120ms ease;
+  }
+
+  .send-btn:active {
+    transform: scale(0.93);
+    box-shadow: 0 2px 8px rgba(124,58,237,0.25);
+  }
+
+  .correct-btn {
+    flex-shrink: 0;
+    width: 42px;
+    height: 42px;
+    display: grid;
+    place-items: center;
+    border-radius: 11px;
+    background: rgba(124,58,237,0.1);
+    border: 1px solid rgba(124,58,237,0.22);
+    color: #a78bfa;
+    transition: background 160ms ease;
+  }
+
+  .correct-btn:disabled {
+    opacity: 0.3;
+    cursor: default;
+  }
+
+  .correct-btn:not(:disabled):active {
+    background: rgba(124,58,237,0.2);
+  }
+
+  /* ── Action controls ── */
+  .action-controls {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+
+  .date-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 44px;
+    padding: 0 14px;
+    border-radius: 12px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid var(--line);
+    color: var(--text-muted);
+  }
+
+  .date-label input[type="date"] {
+    flex: 1;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    color: var(--text);
+    color-scheme: dark;
+    font-family: 'SF Mono', ui-monospace, monospace;
+    font-size: 12px;
+  }
+
+  .priority-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 14px;
+    min-height: 44px;
+    border-radius: 12px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid var(--line);
+    color: var(--text-muted);
+    font-size: 12px;
+    font-weight: 700;
+    white-space: nowrap;
+    transition: background 160ms ease, border-color 160ms ease, color 160ms ease;
+  }
+
+  .priority-btn.is-high {
+    background: rgba(245,158,11,0.12);
+    border-color: rgba(245,158,11,0.28);
+    color: #fbbf24;
+  }
+
+  /* ── AI row ── */
+  .ai-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 10px 2px 0;
+  }
+
+  .ai-toggle-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 32px;
+    padding: 0 12px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid var(--line);
+    color: var(--text-muted);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+  }
+
+  .ai-status-btn {
+    flex: 1;
+    min-height: 32px;
+    min-width: 0;
+    background: transparent;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: right;
+    color: var(--text-faint);
+    font-size: 11px;
+    font-weight: 600;
+  }
+
+  .ai-status-btn.loading,
+  .ai-status-btn.success {
+    color: #a78bfa;
+  }
+
+  .ai-status-btn.error {
+    color: rgba(244,63,94,0.9);
+  }
+
+  /* ── AI panel ── */
+  .ai-panel {
+    display: grid;
+    grid-template-columns: 1fr 152px;
+    gap: 8px;
+    overflow: hidden;
+    padding: 10px 2px 0;
+  }
+
+  .ai-panel input,
+  .ai-panel select {
+    min-height: 42px;
+    min-width: 0;
+    border-radius: 12px;
+    border: 1px solid var(--line);
+    outline: 0;
+    background: rgba(255,255,255,0.05);
+    color: var(--text);
+    padding: 0 12px;
+    font-size: 12px;
+    font-weight: 500;
+    transition: border-color 160ms ease;
+  }
+
+  .ai-panel input:focus,
+  .ai-panel select:focus {
+    border-color: rgba(124,58,237,0.35);
+  }
+
+  .ai-panel select {
+    color-scheme: dark;
+  }
+
+  /* ── Error modal ── */
+  .modal-backdrop {
+    position: fixed;
+    z-index: 80;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    padding: 24px;
+    background: rgba(0,0,0,0.65);
+    backdrop-filter: blur(16px);
+  }
+
+  .error-modal {
+    width: min(100%, 360px);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+    padding: 28px 24px;
+    text-align: center;
+    border-radius: 24px;
+    background: rgba(15,15,22,0.97);
+    border: 1px solid rgba(244,63,94,0.2);
+    box-shadow: 0 32px 100px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.04) inset;
+  }
+
+  .error-icon-wrap {
+    width: 52px;
+    height: 52px;
+    display: grid;
+    place-items: center;
+    border-radius: 16px;
+    background: rgba(244,63,94,0.12);
+    border: 1px solid rgba(244,63,94,0.22);
+    color: #fb7185;
+  }
+
+  .error-modal h2 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+
+  .error-modal p {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: 14px;
+    line-height: 1.6;
+    overflow-wrap: anywhere;
+  }
+
+  .error-meta-row {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    border-radius: 12px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid var(--line);
+    font-size: 11px;
+  }
+
+  .error-meta-row span { color: var(--text-muted); }
+  .error-meta-row strong { color: var(--text); font-family: 'SF Mono', monospace; }
+
+  .error-confirm-btn {
+    width: 100%;
+    min-height: 48px;
+    border-radius: 14px;
+    background: linear-gradient(135deg, #7c3aed, #5b21b6);
+    color: #fff;
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    box-shadow: 0 8px 24px rgba(124,58,237,0.32);
+    transition: transform 120ms ease;
+  }
+
+  .error-confirm-btn:active {
+    transform: scale(0.97);
+  }
+
+  /* ── Hover states (pointer device) ── */
+  @media (hover: hover) {
+    .memo-card:hover {
+      background: rgba(255,255,255,0.04);
+    }
+    .action-card:hover {
+      border-color: rgba(124,58,237,0.18);
+    }
+  }
+
+  /* ── Portrait tablet ── */
+  @media (min-width: 700px) and (orientation: portrait) {
+    .phone-frame,
+    .top-chrome,
+    .scroll-stage {
+      width: min(calc(100vw - 40px), 720px);
+    }
+
+    .bottom-sheet {
+      width: min(calc(100vw - 64px), 680px);
+    }
+
+    .header-inner {
+      max-width: 720px;
+    }
+
+    .scroll-stage {
+      padding: 190px 24px 252px;
+    }
+  }
+
+  /* ── Landscape compact ── */
+  @media (min-width: 640px) and (max-height: 540px) and (orientation: landscape) {
+    .app-shell { align-items: stretch; }
+
+    .phone-frame {
+      width: 100vw;
+      min-height: 100dvh;
+      display: grid;
+      grid-template-columns: 260px minmax(0, 1fr);
+      grid-template-rows: auto minmax(0, 1fr);
+      grid-template-areas: "nav content" "composer content";
+      border: 0;
+    }
+
+    .top-chrome {
+      grid-area: nav;
+      position: relative;
+      top: auto; left: auto; transform: none;
+      width: auto;
+      padding: max(12px, env(safe-area-inset-top)) 0 12px;
+      border-right: 1px solid var(--line);
+      border-bottom: 0;
+    }
+
+    .scroll-stage {
+      grid-area: content;
+      width: 100%;
+      height: 100dvh;
+      padding: 14px;
+    }
+
+    .bottom-sheet {
+      grid-area: composer;
+      position: relative;
+      left: auto; bottom: auto; transform: none;
+      width: auto; height: 100%;
+      padding: 14px 14px max(14px, env(safe-area-inset-bottom));
+      border-radius: 0;
+      border-left: 0;
+      border-right: 1px solid var(--line);
+      border-top: 0;
+      box-shadow: none;
+    }
+
+    .bottom-sheet::before { display: none; }
+
+    .chip-row { flex-wrap: wrap; overflow: visible; }
+    .tag-choice { flex: 1 1 calc(50% - 7px); }
+    .ai-row { flex-direction: column; align-items: stretch; gap: 4px; }
+    .ai-status-btn { text-align: left; }
+    .ai-panel { grid-template-columns: 1fr; }
+  }
+
+  /* ── Landscape desktop ── */
+  @media (min-width: 900px) and (orientation: landscape) {
+    .app-shell { align-items: center; padding: 24px; }
+
+    .phone-frame {
+      width: min(calc(100vw - 48px), 1200px);
+      min-height: min(860px, calc(100dvh - 48px));
+      height: min(860px, calc(100dvh - 48px));
+      display: grid;
+      grid-template-columns: minmax(250px, 0.72fr) minmax(360px, 1.4fr) minmax(320px, 0.88fr);
+      grid-template-areas: "nav content composer";
+      border: 1px solid rgba(255,255,255,0.07);
+      border-radius: 24px;
+      background: rgba(10,10,18,0.3);
+      box-shadow: 0 40px 120px rgba(0,0,0,0.5);
+    }
+
+    .top-chrome {
+      grid-area: nav;
+      height: 100%;
+      border-right: 1px solid var(--line);
+      border-bottom: 0;
+      overflow-y: auto;
+      border-radius: 24px 0 0 24px;
+    }
+
+    .header-inner {
+      height: 100%;
+      justify-content: flex-start;
+      gap: 18px;
+      padding: 20px 18px;
+    }
+
+    .scroll-stage {
+      width: 100%;
+      height: 100%;
+      padding: 20px;
+    }
+
+    .memo-list, .action-list, .skeleton-wrap {
+      max-width: 600px;
+      margin: 0 auto;
+    }
+
+    .bottom-sheet {
+      height: 100%;
+      border-left: 1px solid var(--line);
+      border-right: 0;
+      border-top: 0;
+      padding: 20px 18px;
+      border-radius: 0 24px 24px 0;
+      box-shadow: none;
+    }
+
+    .bottom-sheet::before { display: none; }
+    .action-controls { grid-template-columns: 1fr; }
+  }
+
+  @media (min-width: 1200px) and (orientation: landscape) {
+    .phone-frame {
+      grid-template-columns: 280px minmax(420px, 1fr) 360px;
+    }
+  }
+
+  /* ── min-width: 44px ── */
+  .flex-1 { flex: 1 1 0%; }
+  .min-w-0 { min-width: 0; }
+`;
+
+// ─── Components ─────────────────────────────────────────────────────────────
+
 function ErrorModal({ error, onClose }) {
   if (!error) return null;
-
   return (
     <motion.div
       className="modal-backdrop"
@@ -244,20 +1386,22 @@ function ErrorModal({ error, onClose }) {
         className="error-modal"
         role="alertdialog"
         aria-modal="true"
-        aria-labelledby="correction-error-title"
-        initial={{ y: 26, opacity: 0, scale: 0.96 }}
+        aria-labelledby="err-title"
+        initial={{ y: 28, opacity: 0, scale: 0.95 }}
         animate={{ y: 0, opacity: 1, scale: 1 }}
-        exit={{ y: 18, opacity: 0, scale: 0.98 }}
-        transition={{ type: "spring", stiffness: 320, damping: 28 }}
+        exit={{ y: 20, opacity: 0, scale: 0.97 }}
+        transition={{ type: "spring", stiffness: 340, damping: 28 }}
       >
-        <Sparkles size={22} />
-        <h2 id="correction-error-title">AI 교정 실패</h2>
+        <div className="error-icon-wrap">
+          <Sparkles size={22} />
+        </div>
+        <h2 id="err-title">AI 교정 실패</h2>
         <p>{error.message}</p>
-        <div className="error-meta">
+        <div className="error-meta-row">
           <span>마지막 모델</span>
           <strong>{error.model}</strong>
         </div>
-        <button type="button" onClick={onClose}>
+        <button type="button" className="error-confirm-btn" onClick={onClose}>
           확인
         </button>
       </motion.div>
@@ -267,19 +1411,19 @@ function ErrorModal({ error, onClose }) {
 
 function TopChrome({ activeView, setActiveView, actionFilter, setActionFilter, compact }) {
   return (
-    <header className={`top-chrome ${compact ? "is-compact" : ""}`}>
-      <div className="mx-auto flex w-full max-w-[430px] flex-col gap-3 px-4 pt-3">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="kicker">IntelliMemo</p>
-            <h1>인텔리메모</h1>
+    <header className={`top-chrome${compact ? " is-compact" : ""}`}>
+      <div className="header-inner">
+        <div className="header-row">
+          <div className="brand-block">
+            <span className="brand-eyebrow">IntelliMemo</span>
+            <h1 className="brand-title">인텔리메모</h1>
           </div>
           <motion.div
-            className="sync-orb"
-            animate={{ rotate: compact ? 8 : 0, scale: compact ? 0.92 : 1 }}
-            transition={{ type: "spring", stiffness: 260, damping: 24 }}
+            className="ai-orb"
+            animate={{ scale: compact ? 0.9 : 1 }}
+            transition={{ type: "spring", stiffness: 260, damping: 22 }}
           >
-            <Sparkles size={18} />
+            <Zap size={18} />
           </motion.div>
         </div>
 
@@ -287,22 +1431,26 @@ function TopChrome({ activeView, setActiveView, actionFilter, setActionFilter, c
           <motion.div
             className="mode-indicator"
             animate={{ x: activeView === "memos" ? 0 : "100%" }}
-            transition={{ type: "spring", stiffness: 380, damping: 34 }}
+            transition={{ type: "spring", stiffness: 400, damping: 34 }}
           />
           <button
             type="button"
             className={activeView === "memos" ? "is-active" : ""}
             onClick={() => setActiveView("memos")}
+            role="tab"
+            aria-selected={activeView === "memos"}
           >
-            <MessageSquareText size={17} />
+            <MessageSquareText size={16} />
             메모
           </button>
           <button
             type="button"
             className={activeView === "actions" ? "is-active" : ""}
             onClick={() => setActiveView("actions")}
+            role="tab"
+            aria-selected={activeView === "actions"}
           >
-            <Check size={17} />
+            <Check size={16} />
             액션
           </button>
         </div>
@@ -311,20 +1459,20 @@ function TopChrome({ activeView, setActiveView, actionFilter, setActionFilter, c
           {activeView === "actions" && (
             <motion.div
               className="filter-tabs"
-              initial={{ y: -8, opacity: 0 }}
+              initial={{ y: -10, opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
-              exit={{ y: -8, opacity: 0 }}
-              transition={{ duration: 0.18 }}
+              exit={{ y: -10, opacity: 0 }}
+              transition={{ duration: 0.16 }}
             >
-              <ListFilter size={16} />
-              {ACTION_FILTERS.map((filter) => (
+              <ListFilter size={14} className="filter-tabs-icon" />
+              {ACTION_FILTERS.map((f) => (
                 <button
-                  key={filter.key}
+                  key={f.key}
                   type="button"
-                  className={actionFilter === filter.key ? "is-active" : ""}
-                  onClick={() => setActionFilter(filter.key)}
+                  className={actionFilter === f.key ? "is-active" : ""}
+                  onClick={() => setActionFilter(f.key)}
                 >
-                  {filter.label}
+                  {f.label}
                 </button>
               ))}
             </motion.div>
@@ -338,8 +1486,8 @@ function TopChrome({ activeView, setActiveView, actionFilter, setActionFilter, c
 function SkeletonList() {
   return (
     <div className="skeleton-wrap">
-      {Array.from({ length: 7 }).map((_, index) => (
-        <div className={`skeleton-card skeleton-${index % 3}`} key={index} />
+      {Array.from({ length: 5 }).map((_, i) => (
+        <div className="skeleton-card" key={i} />
       ))}
     </div>
   );
@@ -353,9 +1501,27 @@ function EmptyState({ type }) {
       animate={{ y: 0, opacity: 1 }}
       transition={{ type: "spring", stiffness: 240, damping: 24 }}
     >
-      <Sparkles size={22} />
-      <p>{type === "memos" ? "머릿속 생각, 여기 내려놓으세요 ☁️" : "할 일들이 아직 줄 서기 전이에요"}</p>
+      <div className="empty-icon-wrap">
+        <Sparkles size={24} />
+      </div>
+      <p className="empty-label">
+        {type === "memos"
+          ? "머릿속 생각을 여기 내려놓으세요 ☁️"
+          : "할 일들이 아직 줄 서기 전이에요"}
+      </p>
     </motion.div>
+  );
+}
+
+function TagChip({ tag }) {
+  const colors = TAG_COLORS[tag] ?? { bg: "rgba(255,255,255,0.08)", border: "rgba(255,255,255,0.12)", text: "rgba(255,255,255,0.68)" };
+  return (
+    <span
+      className="tag-chip"
+      style={{ background: colors.bg, border: `1px solid ${colors.border}`, color: colors.text }}
+    >
+      {tag}
+    </span>
   );
 }
 
@@ -379,12 +1545,12 @@ function MemoCard({ memo, index, tick, onDelete, onEdit }) {
     setIsEditing(false);
   };
 
-  const handleCopy = async (event) => {
-    event.stopPropagation();
+  const handleCopy = async (e) => {
+    e.stopPropagation();
     try {
       await copyToClipboard(memo.text);
       setIsCopied(true);
-      window.setTimeout(() => setIsCopied(false), 1300);
+      setTimeout(() => setIsCopied(false), 1400);
     } catch {
       setIsCopied(false);
     }
@@ -399,32 +1565,31 @@ function MemoCard({ memo, index, tick, onDelete, onEdit }) {
         layout
         drag="x"
         dragConstraints={{ left: -112, right: 0 }}
-        dragElastic={0.08}
+        dragElastic={0.07}
         onDragEnd={(_, info) => {
           if (info.offset.x < -82 || info.velocity.x < -560) onDelete(memo.id);
         }}
         onTap={() => !isEditing && setIsEditing(true)}
-        initial={{ y: 40, opacity: 0 }}
+        initial={{ y: 36, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
-        exit={{ x: -100, opacity: 0 }}
-        whileTap={{ scale: 0.98 }}
-        transition={{ type: "spring", stiffness: 290, damping: 25, delay: index * 0.025 }}
+        exit={{ x: -110, opacity: 0 }}
+        whileTap={{ scale: 0.985 }}
+        transition={{ type: "spring", stiffness: 300, damping: 26, delay: index * 0.022 }}
         className="memo-card"
       >
         <div className="memo-header">
           <div className="memo-meta">
-            <span className="tag-chip">{memo.tag}</span>
-            <time>{relativeTime(memo.createdAt, tick)}</time>
+            <TagChip tag={memo.tag} />
+            <time className="memo-time">{relativeTime(memo.createdAt, tick)}</time>
           </div>
           <button
             type="button"
-            className={`memo-copy ${isCopied ? "is-copied" : ""}`}
-            onPointerDown={(event) => event.stopPropagation()}
+            className={`memo-copy${isCopied ? " is-copied" : ""}`}
+            onPointerDown={(e) => e.stopPropagation()}
             onClick={handleCopy}
-            aria-label="메모 복사"
-            title={isCopied ? "복사됨" : "복사"}
+            aria-label={isCopied ? "복사됨" : "메모 복사"}
           >
-            {isCopied ? <Check size={15} /> : <Copy size={15} />}
+            {isCopied ? <Check size={14} /> : <Copy size={14} />}
           </button>
         </div>
         {isEditing ? (
@@ -433,15 +1598,15 @@ function MemoCard({ memo, index, tick, onDelete, onEdit }) {
             className="memo-edit"
             value={draft}
             rows={Math.min(6, Math.max(3, draft.split("\n").length + 1))}
-            onChange={(event) => setDraft(event.target.value)}
+            onChange={(e) => setDraft(e.target.value)}
             onBlur={finishEdit}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) finishEdit();
-              if (event.key === "Escape") setIsEditing(false);
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) finishEdit();
+              if (e.key === "Escape") setIsEditing(false);
             }}
           />
         ) : (
-          <p>{memo.text}</p>
+          <p className="memo-body">{memo.text}</p>
         )}
       </motion.article>
     </motion.div>
@@ -451,12 +1616,12 @@ function MemoCard({ memo, index, tick, onDelete, onEdit }) {
 function CheckMark({ done }) {
   return (
     <motion.span
-      className={`check-wrap ${done ? "is-done" : ""}`}
-      animate={done ? { scale: [1, 1.2, 1] } : { scale: 1 }}
-      transition={{ duration: 0.34 }}
+      className={`check-wrap${done ? " is-done" : ""}`}
+      animate={done ? { scale: [1, 1.18, 1] } : { scale: 1 }}
+      transition={{ duration: 0.32 }}
     >
       {done ? (
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
           <motion.path
             d="M5 12.5l4.2 4.1L19 7"
             stroke="currentColor"
@@ -469,7 +1634,7 @@ function CheckMark({ done }) {
           />
         </svg>
       ) : (
-        <Circle size={22} strokeWidth={1.8} />
+        <Circle size={20} strokeWidth={1.8} />
       )}
     </motion.span>
   );
@@ -479,38 +1644,36 @@ function ActionCard({ action, index, onToggle, onDelete }) {
   const pastDue = isPastDue(action.dueDate, action.done);
 
   return (
-    <motion.div className="swipe-shell">
-      <div className="delete-reveal">
+    <motion.div className="swipe-shell" style={{ borderRadius: 16 }}>
+      <div className="delete-reveal" style={{ borderRadius: 16 }}>
         <Trash2 size={18} />
       </div>
       <motion.article
         layout
         drag="x"
         dragConstraints={{ left: -112, right: 0 }}
-        dragElastic={0.08}
+        dragElastic={0.07}
         onDragEnd={(_, info) => {
           if (info.offset.x < -82 || info.velocity.x < -560) onDelete(action.id);
         }}
         onTap={() => onToggle(action.id)}
-        initial={{ y: 40, opacity: 0 }}
+        initial={{ y: 36, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
-        exit={{ x: -100, opacity: 0 }}
-        whileTap={{ scale: 0.98 }}
-        transition={{ type: "spring", stiffness: 290, damping: 25, delay: index * 0.025 }}
-        className={`action-card ${action.done ? "is-done" : ""} ${
-          action.priority === "high" ? "is-high" : ""
-        }`}
+        exit={{ x: -110, opacity: 0 }}
+        whileTap={{ scale: 0.985 }}
+        transition={{ type: "spring", stiffness: 300, damping: 26, delay: index * 0.022 }}
+        className={`action-card${action.done ? " is-done" : ""}${action.priority === "high" ? " is-high" : ""}`}
       >
         <CheckMark done={action.done} />
-        <div className="min-w-0 flex-1">
-          <p>{action.text}</p>
+        <div className="flex-1 min-w-0">
+          <p className="action-text">{action.text}</p>
           <div className="action-meta">
-            <span className={pastDue ? "is-past" : ""}>
-              <CalendarDays size={14} />
+            <span className={`meta-tag${pastDue ? " is-past" : ""}`}>
+              <CalendarDays size={11} />
               {formatDueDate(action.dueDate)}
             </span>
-            <span className={`priority-pill ${action.priority === "high" ? "is-high" : ""}`}>
-              {action.priority === "high" && <Flame size={13} />}
+            <span className={`priority-pill${action.priority === "high" ? " is-high" : ""}`}>
+              {action.priority === "high" && <Flame size={11} />}
               {action.priority === "high" ? "높음" : "보통"}
             </span>
           </div>
@@ -520,22 +1683,53 @@ function ActionCard({ action, index, onToggle, onDelete }) {
   );
 }
 
+function StatsBar({ memos, actions, activeView }) {
+  const done = actions.filter((a) => a.done).length;
+  const active = actions.filter((a) => !a.done).length;
+
+  if (activeView === "memos") {
+    return (
+      <div className="stats-bar">
+        <div className="stat-chip violet">
+          <span className="stat-dot" />
+          메모 {memos.length}개
+        </div>
+        {memos.filter((m) => m.tag === "#업무").length > 0 && (
+          <div className="stat-chip cyan">
+            <span className="stat-dot" />
+            업무 {memos.filter((m) => m.tag === "#업무").length}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="stats-bar">
+      <div className="stat-chip violet">
+        <span className="stat-dot" />
+        진행 {active}개
+      </div>
+      {done > 0 && (
+        <div className="stat-chip cyan">
+          <span className="stat-dot" />
+          완료 {done}개
+        </div>
+      )}
+    </div>
+  );
+}
+
 function BottomComposer({
   activeView,
-  memoText,
-  setMemoText,
-  selectedTag,
-  setSelectedTag,
+  memoText, setMemoText,
+  selectedTag, setSelectedTag,
   onAddMemo,
-  actionText,
-  setActionText,
-  actionDueDate,
-  setActionDueDate,
-  actionPriority,
-  setActionPriority,
+  actionText, setActionText,
+  actionDueDate, setActionDueDate,
+  actionPriority, setActionPriority,
   onAddAction,
-  aiSettings,
-  setAiSettings,
+  aiSettings, setAiSettings,
   aiStatus,
   onCorrectDraft,
 }) {
@@ -555,11 +1749,11 @@ function BottomComposer({
   return (
     <motion.form
       className="bottom-sheet"
-      onSubmit={(event) => {
-        event.preventDefault();
+      onSubmit={(e) => {
+        e.preventDefault();
         activeView === "memos" ? onAddMemo() : onAddAction();
       }}
-      initial={{ y: 120, opacity: 0.96 }}
+      initial={{ y: 120, opacity: 0.9 }}
       animate={{ y: 0, opacity: 1 }}
       transition={{ type: "spring", stiffness: 300, damping: 30 }}
     >
@@ -567,17 +1761,18 @@ function BottomComposer({
         {activeView === "memos" ? (
           <motion.div
             key="memo-composer"
-            initial={{ y: 18, opacity: 0 }}
+            initial={{ y: 16, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
-            exit={{ y: -18, opacity: 0 }}
-            transition={{ duration: 0.18 }}
+            exit={{ y: -16, opacity: 0 }}
+            transition={{ duration: 0.16 }}
           >
             <div className="chip-row">
               {TAGS.map((tag) => (
                 <button
                   key={tag}
                   type="button"
-                  className={`tag-choice ${selectedTag === tag ? "is-active" : ""}`}
+                  data-tag={tag}
+                  className={`tag-choice${selectedTag === tag ? " is-active" : ""}`}
                   onClick={() => setSelectedTag(tag)}
                 >
                   {tag}
@@ -588,10 +1783,10 @@ function BottomComposer({
               <input
                 ref={inputRef}
                 value={memoText}
-                onChange={(event) => setMemoText(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" && !event.nativeEvent.isComposing) {
-                    event.preventDefault();
+                onChange={(e) => setMemoText(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.nativeEvent.isComposing) {
+                    e.preventDefault();
                     onAddMemo();
                   }
                 }}
@@ -599,41 +1794,41 @@ function BottomComposer({
               />
               <button
                 type="button"
-                className="correct-button"
+                className="correct-btn"
                 disabled={!draftText.trim() || isCorrecting}
                 onClick={() => onCorrectDraft(activeView, () => setIsAiOpen(true))}
                 aria-label="AI 한국어 교정"
               >
-                <Sparkles size={17} />
+                <Sparkles size={16} />
               </button>
-              <button type="submit" className="send-button" aria-label="메모 추가">
-                <Send size={18} />
+              <button type="submit" className="send-btn" aria-label="메모 추가">
+                <Send size={17} />
               </button>
             </div>
           </motion.div>
         ) : (
           <motion.div
             key="action-composer"
-            initial={{ y: 18, opacity: 0 }}
+            initial={{ y: 16, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
-            exit={{ y: -18, opacity: 0 }}
-            transition={{ duration: 0.18 }}
+            exit={{ y: -16, opacity: 0 }}
+            transition={{ duration: 0.16 }}
           >
             <div className="action-controls">
-              <label>
+              <label className="date-label">
                 <CalendarDays size={15} />
                 <input
                   type="date"
                   value={actionDueDate}
-                  onChange={(event) => setActionDueDate(event.target.value)}
+                  onChange={(e) => setActionDueDate(e.target.value)}
                 />
               </label>
               <button
                 type="button"
-                className={actionPriority === "high" ? "is-high" : ""}
-                onClick={() => setActionPriority((value) => (value === "high" ? "normal" : "high"))}
+                className={`priority-btn${actionPriority === "high" ? " is-high" : ""}`}
+                onClick={() => setActionPriority((v) => (v === "high" ? "normal" : "high"))}
               >
-                <Flame size={15} />
+                <Flame size={14} />
                 {actionPriority === "high" ? "높음" : "보통"}
               </button>
             </div>
@@ -641,10 +1836,10 @@ function BottomComposer({
               <input
                 ref={inputRef}
                 value={actionText}
-                onChange={(event) => setActionText(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" && !event.nativeEvent.isComposing) {
-                    event.preventDefault();
+                onChange={(e) => setActionText(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.nativeEvent.isComposing) {
+                    e.preventDefault();
                     onAddAction();
                   }
                 }}
@@ -652,15 +1847,15 @@ function BottomComposer({
               />
               <button
                 type="button"
-                className="correct-button"
+                className="correct-btn"
                 disabled={!draftText.trim() || isCorrecting}
                 onClick={() => onCorrectDraft(activeView, () => setIsAiOpen(true))}
                 aria-label="AI 한국어 교정"
               >
-                <Sparkles size={17} />
+                <Sparkles size={16} />
               </button>
-              <button type="submit" className="send-button" aria-label="액션 추가">
-                <Plus size={19} />
+              <button type="submit" className="send-btn" aria-label="액션 추가">
+                <Plus size={18} />
               </button>
             </div>
           </motion.div>
@@ -668,13 +1863,17 @@ function BottomComposer({
       </AnimatePresence>
 
       <div className="ai-row">
-        <button type="button" className="ai-toggle" onClick={() => setIsAiOpen((value) => !value)}>
-          <KeyRound size={15} />
+        <button
+          type="button"
+          className="ai-toggle-btn"
+          onClick={() => setIsAiOpen((v) => !v)}
+        >
+          <KeyRound size={13} />
           {aiSettings.apiKey ? "AI 설정됨" : "AI 설정"}
         </button>
         <button
           type="button"
-          className={`ai-status ${aiStatus.state}`}
+          className={`ai-status-btn ${aiStatus.state}`}
           title={aiStatus.message}
           onClick={() => setIsAiOpen(true)}
         >
@@ -694,22 +1893,22 @@ function BottomComposer({
             <input
               type="password"
               value={aiSettings.apiKey}
-              onChange={(event) =>
-                setAiSettings((settings) => ({ ...settings, apiKey: event.target.value.trim() }))
+              onChange={(e) =>
+                setAiSettings((s) => ({ ...s, apiKey: e.target.value.trim() }))
               }
               placeholder="Gemini API key"
               aria-label="Gemini API key"
             />
             <select
               value={aiSettings.model}
-              onChange={(event) =>
-                setAiSettings((settings) => ({ ...settings, model: event.target.value }))
+              onChange={(e) =>
+                setAiSettings((s) => ({ ...s, model: e.target.value }))
               }
               aria-label="AI 모델"
             >
-              {AI_MODELS.map((model) => (
-                <option key={model.key} value={model.key}>
-                  {model.label}
+              {AI_MODELS.map((m) => (
+                <option key={m.key} value={m.key}>
+                  {m.label}
                 </option>
               ))}
             </select>
@@ -719,6 +1918,8 @@ function BottomComposer({
     </motion.form>
   );
 }
+
+// ─── Main App ────────────────────────────────────────────────────────────────
 
 export default function IntelliMemoApp() {
   const [activeView, setActiveView] = useState("memos");
@@ -742,107 +1943,73 @@ export default function IntelliMemoApp() {
   const hasHydrated = useRef(false);
 
   useEffect(() => {
-    let isMounted = true;
+    let mounted = true;
 
     const hydrate = async () => {
-      const [storedMemos, storedActions] = await Promise.all([
+      const [storedMemos, storedActions, storedAi] = await Promise.all([
         loadStoredJson("memos", []),
         loadStoredJson("actions", []),
+        loadStoredJson("aiSettings", { apiKey: "", model: DEFAULT_AI_MODEL }),
       ]);
-      const storedAiSettings = await loadStoredJson("aiSettings", {
-        apiKey: "",
-        model: DEFAULT_AI_MODEL,
-      });
 
-      if (!isMounted) return;
+      if (!mounted) return;
+
       setMemos(Array.isArray(storedMemos) ? storedMemos : []);
       setActions(Array.isArray(storedActions) ? storedActions : []);
-      if (storedAiSettings && typeof storedAiSettings === "object") {
+
+      if (storedAi && typeof storedAi === "object") {
+        const model = normalizeAiModel(storedAi.model);
         setAiSettings({
-          apiKey: typeof storedAiSettings.apiKey === "string" ? storedAiSettings.apiKey : "",
-          model: normalizeAiModel(storedAiSettings.model),
+          apiKey: typeof storedAi.apiKey === "string" ? storedAi.apiKey : "",
+          model,
         });
-        setAiStatus({
-          state: "idle",
-          message: `Gemini 교정: ${normalizeAiModel(storedAiSettings.model)}`,
-        });
+        setAiStatus({ state: "idle", message: `Gemini 교정: ${model}` });
       }
+
       hasHydrated.current = true;
-      window.setTimeout(() => isMounted && setIsLoaded(true), 260);
+      setTimeout(() => mounted && setIsLoaded(true), 240);
     };
 
     hydrate();
-    return () => {
-      isMounted = false;
-    };
+    return () => { mounted = false; };
   }, []);
 
   useEffect(() => {
-    const interval = window.setInterval(() => setTick(Date.now()), 30000);
-    return () => window.clearInterval(interval);
+    const id = setInterval(() => setTick(Date.now()), 30000);
+    return () => clearInterval(id);
   }, []);
 
-  useEffect(() => {
-    if (hasHydrated.current) saveStoredJson("memos", memos);
-  }, [memos]);
-
-  useEffect(() => {
-    if (hasHydrated.current) saveStoredJson("actions", actions);
-  }, [actions]);
-
-  useEffect(() => {
-    if (hasHydrated.current) saveStoredJson("aiSettings", aiSettings);
-  }, [aiSettings]);
+  useEffect(() => { if (hasHydrated.current) saveStoredJson("memos", memos); }, [memos]);
+  useEffect(() => { if (hasHydrated.current) saveStoredJson("actions", actions); }, [actions]);
+  useEffect(() => { if (hasHydrated.current) saveStoredJson("aiSettings", aiSettings); }, [aiSettings]);
 
   const filteredActions = useMemo(() => {
-    if (actionFilter === "active") return actions.filter((action) => !action.done);
-    if (actionFilter === "done") return actions.filter((action) => action.done);
+    if (actionFilter === "active") return actions.filter((a) => !a.done);
+    if (actionFilter === "done")   return actions.filter((a) => a.done);
     return actions;
   }, [actions, actionFilter]);
 
   const addMemo = () => {
     const text = memoText.trim();
     if (!text) return;
-
-    setMemos((current) => [
-      {
-        id: createId(),
-        text,
-        tag: selectedTag,
-        createdAt: nowIso(),
-      },
-      ...current,
-    ]);
+    setMemos((cur) => [{ id: createId(), text, tag: selectedTag, createdAt: nowIso() }, ...cur]);
     setMemoText("");
   };
 
   const addAction = () => {
     const text = actionText.trim();
     if (!text) return;
-
-    setActions((current) => [
-      {
-        id: createId(),
-        text,
-        dueDate: actionDueDate,
-        priority: actionPriority,
-        done: false,
-        createdAt: nowIso(),
-      },
-      ...current,
+    setActions((cur) => [
+      { id: createId(), text, dueDate: actionDueDate, priority: actionPriority, done: false, createdAt: nowIso() },
+      ...cur,
     ]);
     setActionText("");
   };
 
-  const deleteMemo = (id) => setMemos((current) => current.filter((memo) => memo.id !== id));
-  const editMemo = (id, text) =>
-    setMemos((current) => current.map((memo) => (memo.id === id ? { ...memo, text } : memo)));
-  const deleteAction = (id) =>
-    setActions((current) => current.filter((action) => action.id !== id));
-  const toggleAction = (id) =>
-    setActions((current) =>
-      current.map((action) => (action.id === id ? { ...action, done: !action.done } : action)),
-    );
+  const deleteMemo   = (id) => setMemos((cur) => cur.filter((m) => m.id !== id));
+  const editMemo     = (id, text) => setMemos((cur) => cur.map((m) => m.id === id ? { ...m, text } : m));
+  const deleteAction = (id) => setActions((cur) => cur.filter((a) => a.id !== id));
+  const toggleAction = (id) => setActions((cur) => cur.map((a) => a.id === id ? { ...a, done: !a.done } : a));
 
   const correctDraft = async (type, openSettings) => {
     const text = type === "memos" ? memoText.trim() : actionText.trim();
@@ -856,36 +2023,30 @@ export default function IntelliMemoApp() {
 
     setCorrectionError(null);
 
-    const fallbackModels = getModelFallbacks(normalizeAiModel(aiSettings.model));
+    const fallbacks = getModelFallbacks(normalizeAiModel(aiSettings.model));
     let lastError = null;
-    let lastModel = fallbackModels[fallbackModels.length - 1] || DEFAULT_AI_MODEL;
+    let lastModel = fallbacks.at(-1) ?? DEFAULT_AI_MODEL;
 
-    for (let index = 0; index < fallbackModels.length; index += 1) {
-      const model = fallbackModels[index];
+    for (let i = 0; i < fallbacks.length; i++) {
+      const model = fallbacks[i];
       lastModel = model;
-      setAiSettings((settings) => ({ ...settings, model }));
+      setAiSettings((s) => ({ ...s, model }));
       setAiStatus({
         state: "loading",
-        message: index === 0 ? `${model} 교정 중...` : `${model}로 재시도 중...`,
+        message: i === 0 ? `${model} 교정 중...` : `${model}로 재시도 중...`,
       });
 
       try {
-        const corrected = await correctKoreanText({
-          apiKey: aiSettings.apiKey,
-          model,
-          text,
-          type,
-        });
-
+        const corrected = await correctKoreanText({ apiKey: aiSettings.apiKey, model, text, type });
         if (type === "memos") setMemoText(corrected);
         else setActionText(corrected);
         setAiStatus({
           state: "success",
-          message: index === 0 ? "교정 완료" : `${model}로 교정 완료`,
+          message: i === 0 ? "교정 완료" : `${model}로 교정 완료`,
         });
         return;
-      } catch (error) {
-        lastError = error;
+      } catch (err) {
+        lastError = err;
       }
     }
 
@@ -897,1109 +2058,16 @@ export default function IntelliMemoApp() {
 
   return (
     <main className="app-shell">
-      <style>{`
-        html,
-        body,
-        #root {
-          margin: 0;
-          min-height: 100%;
-        }
-
-        body {
-          background: #0a0a0f;
-        }
-
-        .mx-auto {
-          margin-left: auto;
-          margin-right: auto;
-        }
-
-        .flex {
-          display: flex;
-        }
-
-        .grid {
-          display: grid;
-        }
-
-        .w-full {
-          width: 100%;
-        }
-
-        .max-w-\\[430px\\] {
-          max-width: 430px;
-        }
-
-        .flex-col {
-          flex-direction: column;
-        }
-
-        .items-center {
-          align-items: center;
-        }
-
-        .justify-between {
-          justify-content: space-between;
-        }
-
-        .min-w-0 {
-          min-width: 0;
-        }
-
-        .flex-1 {
-          flex: 1 1 0%;
-        }
-
-        .gap-2 {
-          gap: 0.5rem;
-        }
-
-        .gap-3 {
-          gap: 0.75rem;
-        }
-
-        .px-4 {
-          padding-left: 1rem;
-          padding-right: 1rem;
-        }
-
-        .pt-3 {
-          padding-top: 0.75rem;
-        }
-
-        :root {
-          color-scheme: dark;
-          --amber: #f59e0b;
-          --bg: #0a0a0f;
-          --text: rgba(255,255,255,0.92);
-          --muted: rgba(255,255,255,0.55);
-          --faint: rgba(255,255,255,0.32);
-          --line: rgba(255,255,255,0.08);
-          --glass: rgba(255,255,255,0.065);
-          --glass-strong: rgba(255,255,255,0.105);
-          font-family: -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Segoe UI', system-ui, sans-serif;
-          letter-spacing: 0;
-        }
-
-        * {
-          box-sizing: border-box;
-          -webkit-tap-highlight-color: transparent;
-        }
-
-        button, input, textarea {
-          font: inherit;
-        }
-
-        button {
-          min-width: 44px;
-          min-height: 44px;
-          border: 0;
-          cursor: pointer;
-        }
-
-        .app-shell {
-          position: relative;
-          min-height: 100vh;
-          min-height: 100dvh;
-          overflow: hidden;
-          background:
-            radial-gradient(circle at 18% 12%, rgba(127, 63, 255, 0.26), transparent 34%),
-            radial-gradient(circle at 86% 18%, rgba(20, 184, 166, 0.18), transparent 29%),
-            radial-gradient(circle at 72% 82%, rgba(245, 158, 11, 0.15), transparent 32%),
-            linear-gradient(180deg, #0a0a0f 0%, #101016 100%);
-          color: var(--text);
-          display: flex;
-          justify-content: center;
-        }
-
-        .app-shell::before {
-          content: "";
-          position: fixed;
-          inset: 0;
-          pointer-events: none;
-          background:
-            linear-gradient(rgba(255,255,255,0.024) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(255,255,255,0.018) 1px, transparent 1px);
-          background-size: 34px 34px;
-          mask-image: linear-gradient(to bottom, rgba(0,0,0,0.7), transparent 74%);
-        }
-
-        .phone-frame {
-          width: min(100vw, 430px);
-          min-height: 100vh;
-          min-height: 100dvh;
-          position: relative;
-          overflow: hidden;
-          border-left: 1px solid rgba(255,255,255,0.06);
-          border-right: 1px solid rgba(255,255,255,0.06);
-          box-shadow: 0 28px 90px rgba(0,0,0,0.36);
-        }
-
-        .top-chrome {
-          position: fixed;
-          z-index: 20;
-          top: 0;
-          left: 50%;
-          transform: translateX(-50%);
-          width: min(100vw, 430px);
-          padding-top: env(safe-area-inset-top);
-          padding-bottom: 12px;
-          background: linear-gradient(180deg, rgba(10,10,15,0.86), rgba(10,10,15,0.56));
-          backdrop-filter: blur(20px);
-          border-bottom: 1px solid rgba(255,255,255,0.06);
-          transition: padding 180ms ease, background 180ms ease, border-color 180ms ease;
-        }
-
-        .top-chrome.is-compact {
-          padding-bottom: 9px;
-          background: rgba(10,10,15,0.78);
-          border-color: rgba(255,255,255,0.1);
-        }
-
-        .kicker {
-          margin: 0 0 2px;
-          color: var(--amber);
-          font-family: 'SF Mono', ui-monospace, Menlo, Consolas, monospace;
-          font-size: 11px;
-          font-weight: 600;
-        }
-
-        h1 {
-          margin: 0;
-          font-size: 23px;
-          line-height: 1.12;
-          font-weight: 700;
-        }
-
-        .top-chrome.is-compact h1 {
-          font-size: 19px;
-        }
-
-        .sync-orb {
-          width: 44px;
-          height: 44px;
-          display: grid;
-          place-items: center;
-          color: var(--amber);
-          border-radius: 999px;
-          background: rgba(245,158,11,0.11);
-          border: 1px solid rgba(245,158,11,0.24);
-          box-shadow: 0 12px 34px rgba(245,158,11,0.12);
-        }
-
-        .mode-tabs {
-          position: relative;
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          min-height: 52px;
-          padding: 5px;
-          border-radius: 999px;
-          background: rgba(255,255,255,0.075);
-          border: 1px solid var(--line);
-          box-shadow: 0 20px 46px rgba(0,0,0,0.18);
-          overflow: hidden;
-        }
-
-        .mode-indicator {
-          position: absolute;
-          top: 5px;
-          left: 5px;
-          width: calc(50% - 5px);
-          height: calc(100% - 10px);
-          border-radius: 999px;
-          background: rgba(245,158,11,0.98);
-          box-shadow: 0 10px 25px rgba(245,158,11,0.24);
-        }
-
-        .mode-tabs button {
-          position: relative;
-          z-index: 1;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 8px;
-          color: var(--muted);
-          background: transparent;
-          border-radius: 999px;
-          font-size: 14px;
-          font-weight: 600;
-        }
-
-        .mode-tabs button.is-active {
-          color: #111113;
-        }
-
-        .filter-tabs {
-          min-height: 44px;
-          display: flex;
-          align-items: center;
-          gap: 6px;
-          padding: 5px;
-          color: var(--muted);
-          border-radius: 999px;
-          background: rgba(255,255,255,0.055);
-          border: 1px solid var(--line);
-        }
-
-        .filter-tabs svg {
-          margin-left: 9px;
-          color: var(--faint);
-        }
-
-        .filter-tabs button {
-          flex: 1;
-          border-radius: 999px;
-          background: transparent;
-          color: var(--muted);
-          font-size: 13px;
-          font-weight: 500;
-        }
-
-        .filter-tabs button.is-active {
-          color: var(--text);
-          background: rgba(255,255,255,0.11);
-        }
-
-        .scroll-stage {
-          width: min(100vw, 430px);
-          height: 100vh;
-          height: 100dvh;
-          overflow-y: auto;
-          scrollbar-width: none;
-          padding: 178px 14px 232px;
-        }
-
-        .scroll-stage::-webkit-scrollbar {
-          display: none;
-        }
-
-        .memo-list {
-          display: flex;
-          flex-direction: column;
-          overflow: hidden;
-          border-radius: 8px;
-          background: rgba(255,255,255,0.052);
-          border: 1px solid var(--line);
-          backdrop-filter: blur(20px);
-        }
-
-        .swipe-shell {
-          position: relative;
-          border-radius: 8px;
-          overflow: hidden;
-        }
-
-        .memo-list .swipe-shell {
-          border-radius: 0;
-          border-bottom: 1px solid rgba(255,255,255,0.065);
-        }
-
-        .memo-list .swipe-shell:last-child {
-          border-bottom: 0;
-        }
-
-        .delete-reveal {
-          position: absolute;
-          inset: 0;
-          display: flex;
-          justify-content: flex-end;
-          align-items: center;
-          padding-right: 18px;
-          color: #fff;
-          background: linear-gradient(90deg, transparent, rgba(239,68,68,0.62));
-        }
-
-        .memo-card, .action-card {
-          position: relative;
-          width: 100%;
-          border-radius: 8px;
-          background: var(--glass);
-          border: 1px solid var(--line);
-          backdrop-filter: blur(20px);
-          box-shadow: 0 18px 42px rgba(0,0,0,0.22);
-          transform-origin: center;
-          touch-action: pan-y;
-        }
-
-        .memo-card {
-          min-height: 84px;
-          padding: 12px 12px 13px;
-          border: 0;
-          border-radius: 0;
-          background: rgba(14,14,20,0.42);
-          box-shadow: none;
-          backdrop-filter: none;
-        }
-
-        .memo-card:active {
-          background: rgba(255,255,255,0.075);
-        }
-
-        .memo-header {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 10px;
-        }
-
-        .memo-meta {
-          display: flex;
-          align-items: center;
-          min-width: 0;
-          gap: 8px;
-        }
-
-        .memo-card p {
-          margin: 9px 0 0;
-          overflow-wrap: anywhere;
-          color: rgba(255,255,255,0.88);
-          font-size: 14px;
-          line-height: 1.5;
-          font-weight: 400;
-        }
-
-        .memo-card time {
-          color: var(--faint);
-          font-family: 'JetBrains Mono', monospace;
-          font-size: 10px;
-          white-space: nowrap;
-        }
-
-        .tag-chip, .tag-choice {
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          min-height: 30px;
-          border-radius: 999px;
-          border: 1px solid rgba(255,255,255,0.08);
-          color: rgba(255,255,255,0.68);
-          background: rgba(255,255,255,0.08);
-          backdrop-filter: blur(14px);
-          font-size: 11px;
-          font-weight: 600;
-          white-space: nowrap;
-        }
-
-        .tag-chip {
-          max-width: 82px;
-          padding: 0 8px;
-          overflow: hidden;
-          text-overflow: ellipsis;
-        }
-
-        .memo-copy {
-          flex: 0 0 34px;
-          width: 34px;
-          min-width: 34px;
-          height: 34px;
-          min-height: 34px;
-          display: grid;
-          place-items: center;
-          border-radius: 999px;
-          color: rgba(255,255,255,0.62);
-          background: rgba(255,255,255,0.055);
-          border: 1px solid rgba(255,255,255,0.07);
-        }
-
-        .memo-copy.is-copied {
-          color: #111113;
-          background: var(--amber);
-          border-color: rgba(245,158,11,0.8);
-        }
-
-        .memo-edit {
-          width: 100%;
-          min-height: 82px;
-          margin-top: 10px;
-          resize: none;
-          border: 0;
-          outline: 0;
-          color: var(--text);
-          background: rgba(0,0,0,0.18);
-          border-radius: 8px;
-          padding: 9px;
-          line-height: 1.5;
-          font-size: 13px;
-        }
-
-        .action-list {
-          display: flex;
-          flex-direction: column;
-          gap: 10px;
-        }
-
-        .action-card {
-          display: flex;
-          align-items: center;
-          gap: 13px;
-          min-height: 76px;
-          padding: 14px;
-        }
-
-        .action-card.is-high {
-          box-shadow: inset 3px 0 0 var(--amber), 0 18px 42px rgba(0,0,0,0.22), -8px 0 26px rgba(245,158,11,0.12);
-        }
-
-        .action-card.is-done {
-          opacity: 0.4;
-          filter: saturate(0.62);
-        }
-
-        .action-card p {
-          margin: 0;
-          overflow-wrap: anywhere;
-          color: var(--text);
-          font-size: 15px;
-          line-height: 1.45;
-          font-weight: 520;
-        }
-
-        .action-card.is-done p {
-          text-decoration: line-through;
-          color: rgba(255,255,255,0.62);
-        }
-
-        .check-wrap {
-          width: 44px;
-          height: 44px;
-          flex: 0 0 44px;
-          display: grid;
-          place-items: center;
-          border-radius: 999px;
-          color: rgba(255,255,255,0.58);
-          background: rgba(255,255,255,0.055);
-          border: 1px solid var(--line);
-        }
-
-        .check-wrap.is-done {
-          color: #111113;
-          background: var(--amber);
-          border-color: rgba(245,158,11,0.68);
-        }
-
-        .action-meta {
-          display: flex;
-          align-items: center;
-          flex-wrap: wrap;
-          gap: 7px;
-          margin-top: 8px;
-          color: var(--faint);
-          font-family: 'JetBrains Mono', monospace;
-          font-size: 11px;
-        }
-
-        .action-meta span {
-          display: inline-flex;
-          align-items: center;
-          gap: 4px;
-          min-height: 26px;
-        }
-
-        .action-meta .is-past {
-          color: rgba(245,158,11,0.94);
-        }
-
-        .priority-pill {
-          padding: 0 9px;
-          border-radius: 999px;
-          color: rgba(255,255,255,0.58);
-          background: rgba(255,255,255,0.07);
-          border: 1px solid var(--line);
-          font-family: 'Noto Sans KR', system-ui, sans-serif;
-          font-size: 11px;
-          font-weight: 700;
-        }
-
-        .priority-pill.is-high {
-          color: #1d1304;
-          background: var(--amber);
-          border-color: rgba(245,158,11,0.72);
-        }
-
-        .empty-state {
-          min-height: 260px;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          gap: 12px;
-          text-align: center;
-          color: rgba(255,255,255,0.58);
-          font-weight: 500;
-        }
-
-        .empty-state svg {
-          color: var(--amber);
-        }
-
-        .skeleton-wrap {
-          display: flex;
-          flex-direction: column;
-          gap: 10px;
-        }
-
-        .skeleton-card {
-          height: 78px;
-          border-radius: 8px;
-          background: linear-gradient(100deg, rgba(255,255,255,0.045), rgba(255,255,255,0.12), rgba(255,255,255,0.045));
-          background-size: 240% 100%;
-          animation: shimmer 1.1s linear infinite;
-          border: 1px solid var(--line);
-        }
-
-        .skeleton-1 {
-          height: 92px;
-        }
-
-        .skeleton-2 {
-          height: 70px;
-        }
-
-        @keyframes shimmer {
-          0% { background-position: 120% 0; }
-          100% { background-position: -120% 0; }
-        }
-
-        .bottom-sheet {
-          position: fixed;
-          z-index: 30;
-          left: 50%;
-          bottom: 0;
-          transform: translateX(-50%);
-          width: min(calc(100vw - 18px), 412px);
-          padding: 12px 12px calc(12px + env(safe-area-inset-bottom));
-          border-radius: 24px 24px 0 0;
-          background: rgba(14,14,20,0.83);
-          border: 1px solid rgba(255,255,255,0.1);
-          border-bottom: 0;
-          backdrop-filter: blur(24px);
-          box-shadow: 0 -24px 70px rgba(0,0,0,0.42);
-        }
-
-        .chip-row {
-          display: flex;
-          gap: 7px;
-          margin-bottom: 9px;
-          overflow-x: auto;
-          scrollbar-width: none;
-        }
-
-        .chip-row::-webkit-scrollbar {
-          display: none;
-        }
-
-        .tag-choice {
-          flex: 1;
-          min-height: 44px;
-          color: var(--muted);
-          background: rgba(255,255,255,0.055);
-        }
-
-        .tag-choice.is-active {
-          color: #111113;
-          background: var(--amber);
-          border-color: rgba(245,158,11,0.82);
-        }
-
-        .composer-line {
-          position: relative;
-          display: flex;
-          align-items: center;
-          gap: 9px;
-          min-height: 56px;
-          padding: 5px;
-          border-radius: 999px;
-          background: linear-gradient(rgba(18,18,24,0.95), rgba(18,18,24,0.95)) padding-box,
-            linear-gradient(110deg, rgba(255,255,255,0.12), rgba(245,158,11,0.28), rgba(255,255,255,0.12)) border-box;
-          border: 1px solid transparent;
-          transition: box-shadow 180ms ease;
-        }
-
-        .composer-line:focus-within {
-          animation: borderSweep 1.6s linear infinite;
-          box-shadow: 0 0 0 4px rgba(245,158,11,0.08), 0 18px 42px rgba(245,158,11,0.08);
-        }
-
-        @keyframes borderSweep {
-          0% { filter: hue-rotate(0deg) brightness(1); }
-          50% { filter: hue-rotate(12deg) brightness(1.12); }
-          100% { filter: hue-rotate(0deg) brightness(1); }
-        }
-
-        .composer-line input {
-          width: 100%;
-          min-width: 0;
-          min-height: 44px;
-          border: 0;
-          outline: 0;
-          padding: 0 7px 0 13px;
-          color: var(--text);
-          background: transparent;
-          font-size: 15px;
-          font-weight: 500;
-        }
-
-        .composer-line input::placeholder {
-          color: rgba(255,255,255,0.36);
-        }
-
-        .send-button {
-          flex: 0 0 46px;
-          width: 46px;
-          height: 46px;
-          display: grid;
-          place-items: center;
-          border-radius: 999px;
-          color: #111113;
-          background: var(--amber);
-          box-shadow: 0 12px 30px rgba(245,158,11,0.22);
-        }
-
-        .correct-button {
-          flex: 0 0 44px;
-          width: 44px;
-          height: 44px;
-          display: grid;
-          place-items: center;
-          border-radius: 999px;
-          color: var(--amber);
-          background: rgba(245,158,11,0.12);
-          border: 1px solid rgba(245,158,11,0.24);
-        }
-
-        .correct-button:disabled {
-          cursor: default;
-          opacity: 0.38;
-          filter: saturate(0.6);
-        }
-
-        .ai-row {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 10px;
-          min-height: 36px;
-          padding: 8px 4px 0;
-        }
-
-        .ai-toggle {
-          min-height: 34px;
-          display: inline-flex;
-          align-items: center;
-          gap: 6px;
-          padding: 0 10px;
-          border-radius: 999px;
-          color: rgba(255,255,255,0.68);
-          background: rgba(255,255,255,0.055);
-          border: 1px solid var(--line);
-          font-size: 12px;
-          font-weight: 700;
-        }
-
-        .ai-status {
-          min-height: 34px;
-          min-width: 0;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          white-space: nowrap;
-          text-align: right;
-          color: var(--faint);
-          background: transparent;
-          font-size: 12px;
-          font-weight: 600;
-        }
-
-        .ai-status.loading,
-        .ai-status.success {
-          color: var(--amber);
-        }
-
-        .ai-status.error {
-          color: rgba(248,113,113,0.92);
-        }
-
-        .ai-panel {
-          display: grid;
-          grid-template-columns: minmax(0, 1fr) 154px;
-          gap: 8px;
-          overflow: hidden;
-          padding: 8px 4px 0;
-        }
-
-        .ai-panel input,
-        .ai-panel select {
-          min-width: 0;
-          min-height: 42px;
-          border-radius: 999px;
-          border: 1px solid var(--line);
-          outline: 0;
-          color: var(--text);
-          background: rgba(255,255,255,0.055);
-          padding: 0 12px;
-          font-size: 12px;
-          font-weight: 600;
-        }
-
-        .ai-panel select {
-          color-scheme: dark;
-        }
-
-        .modal-backdrop {
-          position: fixed;
-          z-index: 80;
-          inset: 0;
-          display: grid;
-          place-items: center;
-          padding: 22px;
-          background: rgba(0,0,0,0.58);
-          backdrop-filter: blur(12px);
-        }
-
-        .error-modal {
-          width: min(100%, 360px);
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          gap: 12px;
-          padding: 22px;
-          text-align: center;
-          border-radius: 8px;
-          color: var(--text);
-          background: rgba(18,18,24,0.96);
-          border: 1px solid rgba(248,113,113,0.24);
-          box-shadow: 0 28px 90px rgba(0,0,0,0.48);
-        }
-
-        .error-modal svg {
-          color: rgba(248,113,113,0.92);
-        }
-
-        .error-modal h2 {
-          margin: 0;
-          font-size: 18px;
-          line-height: 1.3;
-        }
-
-        .error-modal p {
-          margin: 0;
-          color: rgba(255,255,255,0.7);
-          font-size: 14px;
-          line-height: 1.55;
-          overflow-wrap: anywhere;
-        }
-
-        .error-meta {
-          width: 100%;
-          min-height: 42px;
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 12px;
-          padding: 0 12px;
-          border-radius: 8px;
-          background: rgba(255,255,255,0.055);
-          border: 1px solid var(--line);
-          font-size: 12px;
-        }
-
-        .error-meta span {
-          color: var(--muted);
-        }
-
-        .error-modal button {
-          width: 100%;
-          min-height: 46px;
-          border-radius: 999px;
-          color: #111113;
-          background: var(--amber);
-          font-size: 14px;
-          font-weight: 800;
-        }
-
-        .action-controls {
-          display: grid;
-          grid-template-columns: minmax(0, 1fr) 92px;
-          gap: 8px;
-          margin-bottom: 9px;
-        }
-
-        .action-controls label,
-        .action-controls button {
-          min-height: 44px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 7px;
-          border-radius: 999px;
-          color: var(--muted);
-          background: rgba(255,255,255,0.055);
-          border: 1px solid var(--line);
-        }
-
-        .action-controls input[type="date"] {
-          width: 128px;
-          min-height: 38px;
-          color: var(--text);
-          color-scheme: dark;
-          background: transparent;
-          border: 0;
-          outline: 0;
-          font-family: 'JetBrains Mono', monospace;
-          font-size: 12px;
-        }
-
-        .action-controls button {
-          font-size: 13px;
-          font-weight: 700;
-        }
-
-        .action-controls button.is-high {
-          color: #111113;
-          background: var(--amber);
-          border-color: rgba(245,158,11,0.82);
-        }
-
-        @media (max-width: 360px) {
-          .scroll-stage {
-            padding-left: 10px;
-            padding-right: 10px;
-          }
-
-          .tag-chip {
-            max-width: 62px;
-          }
-        }
-
-        @media (min-width: 700px) and (orientation: portrait) {
-          .phone-frame,
-          .top-chrome,
-          .scroll-stage {
-            width: min(calc(100vw - 40px), 720px);
-          }
-
-          .phone-frame {
-            border-left: 1px solid rgba(255,255,255,0.08);
-            border-right: 1px solid rgba(255,255,255,0.08);
-          }
-
-          .top-chrome .max-w-\\[430px\\] {
-            max-width: 720px;
-          }
-
-          .scroll-stage {
-            padding: 182px 24px 246px;
-          }
-
-          .bottom-sheet {
-            width: min(calc(100vw - 64px), 680px);
-          }
-
-          .memo-card {
-            min-height: 88px;
-            padding: 14px 16px 15px;
-          }
-
-          .action-card {
-            min-height: 84px;
-            padding: 16px;
-          }
-        }
-
-        @media (min-width: 640px) and (max-height: 540px) and (orientation: landscape) {
-          .app-shell {
-            align-items: stretch;
-          }
-
-          .phone-frame {
-            width: 100vw;
-            min-height: 100dvh;
-            display: grid;
-            grid-template-columns: 260px minmax(0, 1fr);
-            grid-template-rows: auto minmax(0, 1fr);
-            grid-template-areas:
-              "nav content"
-              "composer content";
-            border-left: 0;
-            border-right: 0;
-            box-shadow: none;
-          }
-
-          .top-chrome {
-            grid-area: nav;
-            position: relative;
-            top: auto;
-            left: auto;
-            transform: none;
-            width: auto;
-            padding-top: max(12px, env(safe-area-inset-top));
-            padding-bottom: 12px;
-            border-right: 1px solid rgba(255,255,255,0.08);
-            border-bottom: 1px solid rgba(255,255,255,0.08);
-            background: rgba(10,10,15,0.76);
-          }
-
-          .top-chrome.is-compact {
-            padding-bottom: 12px;
-          }
-
-          .top-chrome.is-compact h1 {
-            font-size: 23px;
-          }
-
-          .top-chrome .max-w-\\[430px\\] {
-            max-width: none;
-            padding-left: 12px;
-            padding-right: 12px;
-          }
-
-          .scroll-stage {
-            grid-area: content;
-            width: 100%;
-            height: 100dvh;
-            padding: 14px 14px 18px;
-          }
-
-          .bottom-sheet {
-            grid-area: composer;
-            position: relative;
-            left: auto;
-            bottom: auto;
-            transform: none;
-            align-self: stretch;
-            width: auto;
-            max-height: 100%;
-            overflow-y: auto;
-            padding: 12px 12px max(12px, env(safe-area-inset-bottom));
-            border-radius: 0;
-            border-left: 0;
-            border-right: 1px solid rgba(255,255,255,0.08);
-            border-top: 0;
-            background: rgba(14,14,20,0.78);
-            box-shadow: none;
-          }
-
-          .chip-row {
-            flex-wrap: wrap;
-            overflow: visible;
-          }
-
-          .tag-choice {
-            flex: 1 1 calc(50% - 7px);
-          }
-
-          .composer-line {
-            border-radius: 8px;
-          }
-
-          .ai-row {
-            align-items: stretch;
-            flex-direction: column;
-            gap: 4px;
-          }
-
-          .ai-status {
-            width: 100%;
-            text-align: left;
-          }
-
-          .ai-panel {
-            grid-template-columns: 1fr;
-          }
-        }
-
-        @media (min-width: 900px) and (orientation: landscape) {
-          .app-shell {
-            align-items: center;
-            padding: 20px;
-          }
-
-          .phone-frame {
-            width: min(calc(100vw - 40px), 1180px);
-            min-height: min(860px, calc(100dvh - 40px));
-            height: min(860px, calc(100dvh - 40px));
-            display: grid;
-            grid-template-columns: minmax(250px, 0.75fr) minmax(360px, 1.35fr) minmax(318px, 0.9fr);
-            grid-template-areas: "nav content composer";
-            border: 1px solid rgba(255,255,255,0.08);
-            border-radius: 8px;
-            background: rgba(10,10,15,0.34);
-            box-shadow: 0 28px 90px rgba(0,0,0,0.36);
-          }
-
-          .top-chrome {
-            grid-area: nav;
-            height: 100%;
-            border-right: 1px solid rgba(255,255,255,0.08);
-            border-bottom: 0;
-            overflow-y: auto;
-          }
-
-          .top-chrome .max-w-\\[430px\\] {
-            height: 100%;
-            justify-content: flex-start;
-            gap: 18px;
-            padding: 18px 16px;
-          }
-
-          .mode-tabs {
-            min-height: 56px;
-          }
-
-          .filter-tabs {
-            border-radius: 8px;
-          }
-
-          .scroll-stage {
-            width: 100%;
-            height: 100%;
-            padding: 18px;
-          }
-
-          .memo-list,
-          .action-list,
-          .skeleton-wrap {
-            max-width: 620px;
-            margin: 0 auto;
-          }
-
-          .bottom-sheet {
-            height: 100%;
-            border-right: 0;
-            border-left: 1px solid rgba(255,255,255,0.08);
-            padding: 18px 16px;
-          }
-
-          .action-controls {
-            grid-template-columns: 1fr;
-          }
-        }
-
-        @media (min-width: 1180px) and (orientation: landscape) {
-          .phone-frame {
-            grid-template-columns: 280px minmax(420px, 1fr) 360px;
-          }
-
-          .scroll-stage {
-            padding: 22px;
-          }
-
-          .memo-card p {
-            font-size: 15px;
-          }
-        }
-
-        @media (hover: hover) {
-          .memo-list .memo-card:hover,
-          .action-card:hover {
-            box-shadow: 0 22px 52px rgba(0,0,0,0.28);
-          }
-
-          .memo-list .memo-card:hover {
-            background: rgba(255,255,255,0.075);
-            box-shadow: none;
-          }
-        }
-      `}</style>
+      <style>{CSS}</style>
+
+      {/* Aurora background */}
+      <div className="aurora" aria-hidden="true">
+        <div className="aurora-orb aurora-orb-1" />
+        <div className="aurora-orb aurora-orb-2" />
+        <div className="aurora-orb aurora-orb-3" />
+        <div className="aurora-orb aurora-orb-4" />
+      </div>
+      <div className="noise-overlay" aria-hidden="true" />
 
       <div className="phone-frame">
         <TopChrome
@@ -2012,64 +2080,70 @@ export default function IntelliMemoApp() {
 
         <section
           className="scroll-stage"
-          onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
+          onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
         >
           <AnimatePresence mode="wait" initial={false}>
             {activeView === "memos" ? (
               <motion.div
                 key="memos"
-                initial={{ x: -18, opacity: 0 }}
+                initial={{ x: -20, opacity: 0 }}
                 animate={{ x: 0, opacity: 1 }}
-                exit={{ x: 18, opacity: 0 }}
-                transition={{ duration: 0.2 }}
+                exit={{ x: 20, opacity: 0 }}
+                transition={{ duration: 0.18 }}
               >
                 {!isLoaded ? (
                   <SkeletonList />
                 ) : memos.length === 0 ? (
                   <EmptyState type="memos" />
                 ) : (
-                  <motion.div className="memo-list" layout>
-                    <AnimatePresence initial={false}>
-                      {memos.map((memo, index) => (
-                        <MemoCard
-                          key={memo.id}
-                          memo={memo}
-                          index={index}
-                          tick={tick}
-                          onDelete={deleteMemo}
-                          onEdit={editMemo}
-                        />
-                      ))}
-                    </AnimatePresence>
-                  </motion.div>
+                  <>
+                    <StatsBar memos={memos} actions={actions} activeView="memos" />
+                    <motion.div className="memo-list" layout>
+                      <AnimatePresence initial={false}>
+                        {memos.map((memo, i) => (
+                          <MemoCard
+                            key={memo.id}
+                            memo={memo}
+                            index={i}
+                            tick={tick}
+                            onDelete={deleteMemo}
+                            onEdit={editMemo}
+                          />
+                        ))}
+                      </AnimatePresence>
+                    </motion.div>
+                  </>
                 )}
               </motion.div>
             ) : (
               <motion.div
                 key="actions"
-                initial={{ x: 18, opacity: 0 }}
+                initial={{ x: 20, opacity: 0 }}
                 animate={{ x: 0, opacity: 1 }}
-                exit={{ x: -18, opacity: 0 }}
-                transition={{ duration: 0.2 }}
+                exit={{ x: -20, opacity: 0 }}
+                transition={{ duration: 0.18 }}
               >
                 {!isLoaded ? (
                   <SkeletonList />
                 ) : filteredActions.length === 0 ? (
                   <EmptyState type="actions" />
                 ) : (
-                  <motion.div className="action-list" layout>
-                    <AnimatePresence initial={false}>
-                      {filteredActions.map((action, index) => (
-                        <ActionCard
-                          key={action.id}
-                          action={action}
-                          index={index}
-                          onToggle={toggleAction}
-                          onDelete={deleteAction}
-                        />
-                      ))}
-                    </AnimatePresence>
-                  </motion.div>
+                  <>
+                    <StatsBar memos={memos} actions={actions} activeView="actions" />
+                    <motion.div className="action-list" layout>
+                      <AnimatePresence initial={false}>
+                        {filteredActions.map((action, i) => (
+                          <ActionCard
+                            key={action.id}
+                            action={action}
+                            index={i}
+                            onToggle={toggleAction}
+                            onDelete={deleteAction}
+                          />
+                        ))}
+                      </AnimatePresence>
+                    </motion.div>
+                  </>
                 )}
               </motion.div>
             )}
