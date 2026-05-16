@@ -2004,7 +2004,9 @@ function CorrectionModal({ original, corrected, onApply, onCancel }) {
 
 export default function IntelliMemoApp() {
   const [activeView,     setActiveView]     = useState("memos");
-  const [layoutMode,     setLayoutMode]     = useState("landscape"); // "portrait" | "landscape"
+  const [layoutMode,     setLayoutMode]     = useState(() =>
+    typeof window !== "undefined" && window.innerWidth < 640 ? "portrait" : "landscape"
+  );
   const [memos,          setMemos]          = useState([]);
   const [actions,        setActions]        = useState([]);
   const [memoText,       setMemoText]       = useState("");
@@ -2051,6 +2053,14 @@ export default function IntelliMemoApp() {
     };
     hydrate();
     return () => { alive = false; };
+  }, []);
+
+  // ── 반응형 레이아웃 (뷰포트 너비 640px 기준) ──
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 639px)");
+    const handler = (e) => setLayoutMode(e.matches ? "portrait" : "landscape");
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
   }, []);
 
   // ── Tick ──
