@@ -610,6 +610,7 @@ const CSS = `
   }
   .layout-toggle-btn:hover { background: rgba(0,0,0,0.09); color: var(--t1); }
   .layout-toggle-btn.landscape-active { background: var(--accent-bg); color: var(--accent); }
+  .layout-toggle-btn.reload-btn { color: var(--t3); }
 
   .memo-body {
     margin: 0;
@@ -1317,6 +1318,15 @@ function Header({ activeView, setActiveView, actionFilter, setActionFilter, comp
               title={isLandscape ? "세로 모드" : "가로 모드"}
             >
               {isLandscape ? <Smartphone size={15} /> : <Monitor size={15} />}
+            </button>
+            <button
+              type="button"
+              className="layout-toggle-btn reload-btn"
+              onClick={() => window.location.reload()}
+              aria-label="새로고침"
+              title="새로고침"
+            >
+              <RotateCcw size={13} />
             </button>
             <span className="gemini-badge">
               <Sparkles size={11} />
@@ -2229,7 +2239,7 @@ function CropModal({ dataUrl, mimeType, onCrop, onCancel }) {
 
     // 꼭지점 L자 핸들
     const ARM  = Math.min(w, h, 120) * 0.32;
-    const TICK = Math.max(5, ARM * 0.22);
+    const TICK = Math.max(2, ARM * 0.11);
     ctx.fillStyle = "#fff";
     ctx.shadowColor = "rgba(0,0,0,0.55)";
     ctx.shadowBlur  = 8;
