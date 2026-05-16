@@ -573,6 +573,7 @@ const CSS = `
     overflow: hidden;
     border-radius: var(--r-l);
     isolation: isolate;
+    box-shadow: var(--sh1);
   }
 
   /* 삭제 배경: 스와이프 시 드러나는 영역 */
@@ -606,7 +607,6 @@ const CSS = `
     background: var(--surface);
     border-radius: var(--r-l);
     border: 1px solid var(--border);
-    box-shadow: var(--sh1);
     touch-action: pan-y;
     text-align: left;
     /* layout shift 방지: height 변화를 자연스럽게 */
@@ -753,12 +753,11 @@ const CSS = `
 
   /* ── Action card ── */
   .action-card {
-    position: relative; display: flex; align-items: center; gap: 12px;
+    position: relative; display: flex; align-items: flex-start; gap: 12px;
     padding: 12px 14px 14px;
     background: var(--surface);
     border-radius: var(--r-l);
     border: 1px solid var(--border);
-    box-shadow: var(--sh1);
     touch-action: pan-y;
     /* layout="position" 없이도 자연스럽게 */
     transition: opacity 200ms ease, box-shadow 120ms ease;
@@ -768,7 +767,7 @@ const CSS = `
 
   /* ── Checkbox ── */
   .chk {
-    flex-shrink: 0; width: 24px; height: 24px; margin-top: 1px;
+    flex-shrink: 0; width: 24px; height: 24px; margin-top: 2px;
     border-radius: 6px; border: 2px solid var(--border-2);
     background: var(--surface); display: grid; place-items: center;
     color: transparent; min-height: 0; min-width: 0;
@@ -785,7 +784,7 @@ const CSS = `
   }
   .action-card.done .action-text { text-decoration: line-through; color: var(--t3); }
 
-  .action-meta { display: flex; align-items: center; gap: 6px; flex-wrap: nowrap; overflow: hidden; }
+  .action-meta { display: flex; align-items: center; gap: 6px; flex-wrap: nowrap; }
 
   .m-chip {
     display: inline-flex; align-items: center; gap: 3px;
@@ -945,7 +944,7 @@ const CSS = `
     transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
   }
   .ctrl.hi-on { background: var(--amber-bg); color: var(--amber); border-color: rgba(217,119,6,0.25); }
-  .ctrl svg { display: block; flex-shrink: 0; }
+  .ctrl svg { display: block; flex-shrink: 0; pointer-events: none; }
   .ctrl input[type="date"] {
     font-size: 12px; font-weight: 600; color: var(--t1);
     color-scheme: light; cursor: pointer; text-align: center;
@@ -1773,18 +1772,15 @@ function ActionCard({ action, index, onToggle, onDelete }) {
           onClick={() => onToggle(action.id)}
           aria-label={action.done ? "완료 취소" : "완료 처리"}
         >
-          {action.done && (
-            <svg width="12" height="12" viewBox="0 0 14 14" fill="none" aria-hidden="true">
-              <motion.path
-                d="M2 7l3.5 3.5L12 3"
-                stroke="currentColor" strokeWidth="2.2"
-                strokeLinecap="round" strokeLinejoin="round"
-                initial={{ pathLength: 0 }}
-                animate={{ pathLength: 1 }}
-                transition={{ duration: 0.22, ease: "easeOut" }}
-              />
-            </svg>
-          )}
+          <svg width="12" height="12" viewBox="0 0 14 14" fill="none" aria-hidden="true" style={{ display: "block" }}>
+            <motion.path
+              d="M2 7l3.5 3.5L12 3"
+              stroke="currentColor" strokeWidth="2.2"
+              strokeLinecap="round" strokeLinejoin="round"
+              animate={{ pathLength: action.done ? 1 : 0, opacity: action.done ? 1 : 0 }}
+              transition={{ duration: 0.22, ease: "easeOut" }}
+            />
+          </svg>
         </button>
 
         <div className="action-body">
