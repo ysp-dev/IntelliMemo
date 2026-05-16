@@ -1,0 +1,14 @@
+{
+  "name": "intelli-memo",
+  "scripts": {
+    "build": "node scripts/build-standalone.mjs",
+    "standalone": "node scripts/build-standalone.mjs"
+  },
+  "dependencies": {
+    "vite": "latest",
+    "react": "latest",
+    "react-dom": "latest",
+    "framer-motion": "latest",
+    "lucide-react": "latest"
+  }
+}
