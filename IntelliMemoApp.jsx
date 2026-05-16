@@ -49,6 +49,48 @@ const AI_MODELS = [
   { key: "gemini-2.0-flash-lite", label: "Gemini 2.0 Flash-Lite" },
 ];
 
+const AI_CORRECTION_MODES = [
+  {
+    key:   "typo",
+    label: "오타·띄어쓰기",
+    group: "typo",
+    modal: false,
+    prompt: (text) =>
+      `You proofread Korean quick-capture notes. Return only the fully corrected Korean text. Fix typos and spacing errors only. Preserve every idea, detail, line break, meaning, intent, and tone. Do not summarize, shorten, omit, add explanations, labels, quotation marks, markdown, or alternatives. If already correct, return it unchanged.\n\n오타와 띄어쓰기만 교정해줘. 절대 내용을 바꾸거나 줄이지 마.\n\n${text}`,
+  },
+  {
+    key:   "grammar",
+    label: "문법",
+    group: "sentence",
+    modal: true,
+    prompt: (text) =>
+      `You are a Korean grammar corrector. Fix grammatical errors only: incorrect particles (조사), verb and adjective conjugation errors, tense errors, and awkward sentence structures. Do NOT change vocabulary, style, tone, or content. Return ONLY the corrected Korean text, no explanations.\n\n문법 오류만 교정해줘: 조사, 어미 활용, 시제, 문장 구조. 어휘·문체·내용은 그대로 유지해.\n\n${text}`,
+  },
+  {
+    key:   "style",
+    label: "문체",
+    group: "sentence",
+    modal: true,
+    prompt: (text) =>
+      `You are a Korean writing style editor. Improve the writing to make it clearer, more natural, and more polished. Refine word choice, improve sentence flow, and restructure for readability. Preserve all original ideas, facts, and intent. Return ONLY the improved Korean text, no explanations.\n\n문체를 자연스럽고 읽기 좋게 다듬어줘. 원래 내용과 의도는 모두 유지해.\n\n${text}`,
+  },
+  {
+    key:   "semantic",
+    label: "의미·맥락",
+    group: "sentence",
+    modal: true,
+    prompt: (text) =>
+      `You are a Korean semantic editor. Analyze the meaning, intent, and logical flow of the text. Fix ambiguous expressions, logical gaps, unclear references, and contradictions. Preserve the original ideas but clarify meaning so the text communicates the intended message precisely. Return ONLY the improved Korean text, no explanations.\n\n의미와 맥락을 분석해서 모호한 표현, 논리적 빈틈, 불명확한 지시어를 교정해줘. 원래 의도는 유지하되 전달력을 높여줘.\n\n${text}`,
+  },
+];
+
+const AI_CORRECTION_GROUPS = [
+  { key: "typo",     label: "오타·띄어쓰기" },
+  { key: "sentence", label: "문장 교정" },
+];
+
+const DEFAULT_AI_CORRECTION_MODE = "typo";
+
 const UNDO_DELAY_MS = 3500;
 
 // ─── Utilities ───────────────────────────────────────────────────────────────
@@ -167,10 +209,9 @@ const apiError = (status, errorText) => {
   return msg || `오류 ${status}`;
 };
 
-const correctKorean = async ({ apiKey, model, text, mode = "typo" }) => {
-  const prompt = mode === "sentence"
-    ? `You are a Korean writing editor. Read the following memo holistically and suggest a naturally improved version. Preserve all original ideas, facts, and intent — only improve flow, clarity, and sentence structure. Return ONLY the improved Korean text, no explanations.\n\n다음 메모를 맥락과 흐름을 고려해 자연스럽게 다듬어줘. 내용과 의미는 그대로 유지해.\n\n${text}`
-    : `You proofread Korean quick-capture notes. Return only the fully corrected Korean text. Fix typos and spacing errors only. Preserve every idea, detail, line break, meaning, intent, and tone. Do not summarize, shorten, omit, add explanations, labels, quotation marks, markdown, or alternatives. If already correct, return it unchanged.\n\n오타와 띄어쓰기만 교정해줘. 절대 내용을 바꾸거나 줄이지 마.\n\n${text}`;
+const correctKorean = async ({ apiKey, model, text, mode = DEFAULT_AI_CORRECTION_MODE }) => {
+  const modeConfig = AI_CORRECTION_MODES.find((m) => m.key === mode) ?? AI_CORRECTION_MODES[0];
+  const prompt = modeConfig.prompt(text);
 
   let res;
   try {
@@ -810,6 +851,9 @@ const CSS = `
   /* AI 처리 유형 선택 칩 (메모 전용) */
   .ai-mode-row {
     display: flex; align-items: center; gap: 5px; margin-top: 8px;
+  }
+  .ai-submode-row {
+    margin-top: 4px; padding-left: 2px;
   }
   .ai-mode-chip {
     display: inline-flex; align-items: center; gap: 3px;
@@ -1654,7 +1698,7 @@ function Composer({
   const actionRef = useRef(null);
   const cameraRef = useRef(null);
   const [aiOpen,   setAiOpen]   = useState(false);
-  const [aiMode,   setAiMode]   = useState("typo"); // "typo" | "sentence"
+  const [aiMode,   setAiMode]   = useState(DEFAULT_AI_CORRECTION_MODE);
   const [ocrState, setOcrState] = useState("idle"); // "idle" | "scanning" | "error"
   const [cropData, setCropData] = useState(null);   // { dataUrl, mimeType } | null
 
@@ -1811,7 +1855,7 @@ function Composer({
                     disabled={!hasText || correcting}
                     onClick={() => onCorrectDraft(activeView, () => setAiOpen(true), aiMode)}
                     aria-label="AI 교정"
-                    title={aiMode === "sentence" ? "문장 교정 제안" : "오타·띄어쓰기 교정"}
+                    title={(AI_CORRECTION_MODES.find((m) => m.key === aiMode) ?? AI_CORRECTION_MODES[0]).label}
                   >
                     <Sparkles size={16} />
                   </button>
@@ -1917,22 +1961,40 @@ function Composer({
       </AnimatePresence>
 
       {activeView === "memos" && (
-        <div className="ai-mode-row">
-          <button
-            type="button"
-            className={`ai-mode-chip${aiMode === "typo" ? " on" : ""}`}
-            onClick={() => setAiMode("typo")}
-          >
-            오타·띄어쓰기
-          </button>
-          <button
-            type="button"
-            className={`ai-mode-chip${aiMode === "sentence" ? " on" : ""}`}
-            onClick={() => setAiMode("sentence")}
-          >
-            문장 교정
-          </button>
-        </div>
+        <>
+          <div className="ai-mode-row">
+            {AI_CORRECTION_GROUPS.map((g) => {
+              const active = g.key === "typo" ? aiMode === "typo" : aiMode !== "typo";
+              return (
+                <button
+                  key={g.key}
+                  type="button"
+                  className={`ai-mode-chip${active ? " on" : ""}`}
+                  onClick={() => {
+                    if (g.key === "typo") setAiMode("typo");
+                    else if (aiMode === "typo") setAiMode("grammar");
+                  }}
+                >
+                  {g.label}
+                </button>
+              );
+            })}
+          </div>
+          {aiMode !== "typo" && (
+            <div className="ai-mode-row ai-submode-row">
+              {AI_CORRECTION_MODES.filter((m) => m.group === "sentence").map((m) => (
+                <button
+                  key={m.key}
+                  type="button"
+                  className={`ai-mode-chip${aiMode === m.key ? " on" : ""}`}
+                  onClick={() => setAiMode(m.key)}
+                >
+                  {m.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </>
       )}
 
       <div className="ai-row">
@@ -2491,7 +2553,7 @@ export default function IntelliMemoApp() {
   }, []);
 
   // ── AI correction ──
-  const correctDraft = useCallback(async (type, openSettings, mode = "typo") => {
+  const correctDraft = useCallback(async (type, openSettings, mode = DEFAULT_AI_CORRECTION_MODE) => {
     const text = type === "memos" ? memoText.trim() : actionText.trim();
     if (!text) return;
 
@@ -2500,6 +2562,8 @@ export default function IntelliMemoApp() {
       openSettings();
       return;
     }
+
+    const modeConfig = AI_CORRECTION_MODES.find((m) => m.key === mode) ?? AI_CORRECTION_MODES[0];
 
     setAiError(null);
     const fallbacks = getModelFallbacks(normalizeModel(aiSettings.model));
@@ -2512,14 +2576,12 @@ export default function IntelliMemoApp() {
       setAiSettings((s) => ({ ...s, model }));
       setAiStatus({
         state: "loading",
-        message: i === 0
-          ? `${mode === "sentence" ? "문장 교정" : "오타 교정"} 중…`
-          : `${model} 재시도 중…`,
+        message: i === 0 ? `${modeConfig.label} 중…` : `${model} 재시도 중…`,
       });
 
       try {
         const corrected = await correctKorean({ apiKey: aiSettings.apiKey, model, text, mode });
-        if (mode === "sentence" && type === "memos") {
+        if (modeConfig.modal && type === "memos") {
           setPendingCorrection({ original: text, corrected });
           setAiStatus({ state: "success", message: "교정 제안 준비됨 ✓" });
         } else {
