@@ -9,6 +9,7 @@ import {
   CheckCircle2,
   Copy,
   Flame,
+  ImagePlus,
   KeyRound,
   ListFilter,
   MessageSquareText,
@@ -897,12 +898,12 @@ const CSS = `
     color: var(--t3); background: var(--raised);
   }
 
-  .btn-camera {
+  .btn-camera, .btn-gallery {
     color: var(--t2); background: var(--raised);
     transition: background 120ms ease, color 120ms ease;
   }
-  .btn-camera:hover  { background: rgba(0,0,0,0.08); color: var(--t1); }
-  .btn-camera:disabled { opacity: 0.3; cursor: default; }
+  .btn-camera:hover, .btn-gallery:hover { background: rgba(0,0,0,0.08); color: var(--t1); }
+  .btn-camera:disabled, .btn-gallery:disabled { opacity: 0.3; cursor: default; }
   .btn-camera.scanning svg { animation: spin 0.9s linear infinite; }
 
   .btn-submit {
@@ -1880,7 +1881,8 @@ function Composer({
 }) {
   const memoRef   = useRef(null);
   const actionRef = useRef(null);
-  const cameraRef = useRef(null);
+  const cameraRef  = useRef(null);
+  const galleryRef = useRef(null);
   const [aiOpen,   setAiOpen]   = useState(false);
   const [aiMode,   setAiMode]   = useState(DEFAULT_AI_CORRECTION_MODE);
   const [ocrState, setOcrState] = useState("idle"); // "idle" | "scanning" | "error"
@@ -1891,6 +1893,11 @@ function Composer({
   const handleCameraClick = () => {
     if (!aiSettings.apiKey) { setAiOpen(true); return; }
     cameraRef.current?.click();
+  };
+
+  const handleGalleryClick = () => {
+    if (!aiSettings.apiKey) { setAiOpen(true); return; }
+    galleryRef.current?.click();
   };
 
   const handleImageSelect = (e) => {
@@ -2040,9 +2047,19 @@ function Composer({
                     disabled={ocrState === "scanning" || correcting}
                     onClick={handleCameraClick}
                     aria-label="카메라 OCR"
-                    title="사진에서 텍스트 추출"
+                    title="카메라로 텍스트 추출"
                   >
                     <Camera size={16} />
+                  </button>
+                  <button
+                    type="button"
+                    className="icon-btn btn-gallery"
+                    disabled={ocrState === "scanning" || correcting}
+                    onClick={handleGalleryClick}
+                    aria-label="갤러리에서 텍스트 추출"
+                    title="갤러리에서 텍스트 추출"
+                  >
+                    <ImagePlus size={16} />
                   </button>
                   <button
                     type="button"
@@ -2067,6 +2084,13 @@ function Composer({
                     type="file"
                     accept="image/*"
                     capture="environment"
+                    style={{ display: "none" }}
+                    onChange={handleImageSelect}
+                  />
+                  <input
+                    ref={galleryRef}
+                    type="file"
+                    accept="image/*"
                     style={{ display: "none" }}
                     onChange={handleImageSelect}
                   />
