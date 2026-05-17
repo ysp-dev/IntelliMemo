@@ -1,0 +1,491 @@
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { AnimatePresence, motion } from "framer-motion";
+import {
+  ArrowUp,
+  CalendarDays,
+  Camera,
+  Flame,
+  ImagePlus,
+  KeyRound,
+  Sparkles,
+  X,
+} from "lucide-react";
+import {
+  AI_CORRECTION_GROUPS,
+  AI_CORRECTION_MODES,
+  AI_MODELS,
+  DEFAULT_AI_CORRECTION_MODE,
+  DEFAULT_AI_MODEL,
+  TAGS,
+} from "../constants.js";
+import { getModelFallbacks, normalizeModel } from "../utils.js";
+import { extractTextFromImage } from "../api.js";
+import { useAutoResize } from "../hooks/useAutoResize.js";
+import { CropModal } from "./modals/CropModal.jsx";
+
+export function Composer({
+  activeView,
+  memoText, setMemoText,
+  selectedTag, setSelectedTag,
+  onAddMemo,
+  actionText, setActionText,
+  actionDueDate, setActionDueDate,
+  actionPriority, setActionPriority,
+  onAddAction,
+  aiSettings, setAiSettings,
+  aiStatus,
+  onCorrectDraft,
+  onOcrError,
+  rateLimitInfo,
+  rateLimitSec,
+  onRateLimit,
+  onDismissRateLimit,
+}) {
+  const memoRef   = useRef(null);
+  const actionRef = useRef(null);
+  const cameraRef  = useRef(null);
+  const galleryRef = useRef(null);
+  const [aiOpen,   setAiOpen]   = useState(false);
+  const [aiMode,   setAiMode]   = useState(DEFAULT_AI_CORRECTION_MODE);
+  const [ocrState, setOcrState] = useState("idle");
+  const [cropData, setCropData] = useState(null);
+
+  const correcting = aiStatus.state === "loading";
+
+  const handleCameraClick = () => {
+    if (!aiSettings.apiKey) { setAiOpen(true); return; }
+    cameraRef.current?.click();
+  };
+
+  const handleGalleryClick = () => {
+    if (!aiSettings.apiKey) { setAiOpen(true); return; }
+    galleryRef.current?.click();
+  };
+
+  const handleImageFile = (file) => {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        setCropData({ dataUrl: reader.result, mimeType: file.type || "image/jpeg" });
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleImageSelect = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    handleImageFile(file);
+  };
+
+  const handleMemoPaste = (e) => {
+    const imageItem = [...(e.clipboardData?.items ?? [])]
+      .find((item) => item.kind === "file" && item.type.startsWith("image/"));
+    if (!imageItem) return;
+    e.preventDefault();
+    if (!aiSettings.apiKey) { setAiOpen(true); return; }
+    handleImageFile(imageItem.getAsFile());
+  };
+
+  const handleCropConfirm = async (base64, mimeType) => {
+    setCropData(null);
+    setOcrState("scanning");
+
+    const fallbacks = getModelFallbacks(normalizeModel(aiSettings.model));
+    let lastError = null;
+    let lastModel = fallbacks.at(-1) ?? DEFAULT_AI_MODEL;
+
+    for (let i = 0; i < fallbacks.length; i++) {
+      const model = fallbacks[i];
+      lastModel = model;
+      setAiSettings((s) => ({ ...s, model }));
+      try {
+        const extracted = await extractTextFromImage({ apiKey: aiSettings.apiKey, model, base64, mimeType });
+        if (!extracted.trim()) {
+          setOcrState("error");
+          setTimeout(() => setOcrState("idle"), 2000);
+          onOcrError({ model, message: "텍스트를 찾을 수 없습니다", type: "ocr" });
+          return;
+        }
+        setMemoText((prev) => prev ? `${prev}\n${extracted}` : extracted);
+        setOcrState("idle");
+        return;
+      } catch (err) {
+        if (err.status === 429 && (err.limitType ?? "unknown") === "rpd") {
+          setOcrState("idle");
+          onRateLimit("rpd", 0);
+          return;
+        }
+        lastError = err;
+      }
+    }
+
+    if (lastError?.status === 429) {
+      setOcrState("idle");
+      onRateLimit(lastError.limitType ?? "unknown", lastError.retryAfter ?? 60);
+      return;
+    }
+
+    const message = lastError instanceof Error ? lastError.message : "OCR 실패";
+    setOcrState("error");
+    setTimeout(() => setOcrState("idle"), 2000);
+    onOcrError({ model: lastModel, message, type: "ocr" });
+  };
+
+  const draftText = activeView === "memos" ? memoText : actionText;
+  const hasText   = draftText.trim().length > 0;
+
+  useAutoResize(memoRef,   memoText);
+  useAutoResize(actionRef, actionText);
+
+  useEffect(() => {
+    if (aiStatus.state === "error") setAiOpen(true);
+  }, [aiStatus.state]);
+
+  useEffect(() => {
+    const ref = activeView === "memos" ? memoRef : actionRef;
+    ref.current?.focus({ preventScroll: true });
+  }, [activeView]);
+
+  const clearDraft = () => {
+    if (activeView === "memos") setMemoText("");
+    else setActionText("");
+  };
+
+  return (
+    <motion.form
+      className="composer"
+      onSubmit={(e) => {
+        e.preventDefault();
+        activeView === "memos" ? onAddMemo() : onAddAction();
+      }}
+      initial={{ opacity: 0, y: -8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.18, ease: "easeOut" }}
+    >
+      <div className="handle" />
+
+      <AnimatePresence mode="wait" initial={false}>
+        {activeView === "memos" ? (
+          <motion.div
+            key="memo"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.13 }}
+          >
+            <div className="tag-row">
+              {TAGS.map((tag) => (
+                <button
+                  key={tag}
+                  type="button"
+                  data-tag={tag}
+                  className={`tag-btn${selectedTag === tag ? " on" : ""}`}
+                  onClick={() => setSelectedTag(tag)}
+                >
+                  {tag}
+                </button>
+              ))}
+            </div>
+            <div className="textarea-wrap">
+              <textarea
+                ref={memoRef}
+                className="composer-textarea"
+                value={memoText}
+                rows={1}
+                onChange={(e) => setMemoText(e.target.value)}
+                onPaste={handleMemoPaste}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && !e.nativeEvent.isComposing) {
+                    e.preventDefault();
+                    onAddMemo();
+                  }
+                }}
+                placeholder="생각을 빠르게 메모하세요…"
+              />
+              <div className="textarea-footer">
+                <span className="char-hint">
+                  {ocrState === "scanning" ? "이미지 텍스트 추출 중…"
+                    : ocrState === "error"  ? "텍스트를 찾을 수 없음"
+                    : memoText.length > 0  ? `${memoText.length}자 · ⌘↵ 저장`
+                    : "⌘↵ 저장"}
+                </span>
+                <div className="btn-row">
+                  {hasText && (
+                    <button
+                      type="button"
+                      className="icon-btn btn-clear"
+                      onClick={clearDraft}
+                      aria-label="지우기"
+                    >
+                      <X size={15} />
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className={`icon-btn btn-camera${ocrState === "scanning" ? " scanning" : ""}`}
+                    disabled={ocrState === "scanning" || correcting}
+                    onClick={handleCameraClick}
+                    aria-label="카메라 OCR"
+                    title="카메라로 텍스트 추출"
+                  >
+                    <Camera size={16} />
+                  </button>
+                  <button
+                    type="button"
+                    className="icon-btn btn-gallery"
+                    disabled={ocrState === "scanning" || correcting}
+                    onClick={handleGalleryClick}
+                    aria-label="갤러리에서 텍스트 추출"
+                    title="갤러리에서 텍스트 추출"
+                  >
+                    <ImagePlus size={16} />
+                  </button>
+                  <button
+                    type="button"
+                    className={`icon-btn btn-ai${correcting ? " spinning" : ""}`}
+                    disabled={!hasText || correcting}
+                    onClick={() => onCorrectDraft(activeView, () => setAiOpen(true), aiMode)}
+                    aria-label="AI 교정"
+                    title={(AI_CORRECTION_MODES.find((m) => m.key === aiMode) ?? AI_CORRECTION_MODES[0]).label}
+                  >
+                    <Sparkles size={16} />
+                  </button>
+                  <button
+                    type="submit"
+                    className="icon-btn btn-submit"
+                    disabled={!hasText}
+                    aria-label="메모 추가"
+                  >
+                    <ArrowUp size={16} strokeWidth={2.5} />
+                  </button>
+                  <input
+                    ref={cameraRef}
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    style={{ display: "none" }}
+                    onChange={handleImageSelect}
+                  />
+                  <input
+                    ref={galleryRef}
+                    type="file"
+                    accept="image/*"
+                    style={{ display: "none" }}
+                    onChange={handleImageSelect}
+                  />
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        ) : (
+          <motion.div
+            key="action"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.13 }}
+          >
+            <div className="action-ctrl">
+              <label className="ctrl" style={{ cursor: "pointer" }}>
+                <CalendarDays size={14} />
+                <input
+                  type="date"
+                  value={actionDueDate}
+                  onChange={(e) => setActionDueDate(e.target.value)}
+                />
+              </label>
+              <button
+                type="button"
+                className={`ctrl${actionPriority === "high" ? " hi-on" : ""}`}
+                onClick={() => setActionPriority((v) => (v === "high" ? "normal" : "high"))}
+              >
+                <Flame size={14} />
+                {actionPriority === "high" ? "높음" : "보통"}
+              </button>
+            </div>
+            <div className="textarea-wrap">
+              <textarea
+                ref={actionRef}
+                className="composer-textarea"
+                value={actionText}
+                rows={1}
+                onChange={(e) => setActionText(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && !e.nativeEvent.isComposing) {
+                    e.preventDefault();
+                    onAddAction();
+                  }
+                }}
+                placeholder="다음 할 일을 입력하세요…"
+              />
+              <div className="textarea-footer">
+                <span className="char-hint">
+                  {actionText.length > 0 ? `${actionText.length}자 · ⌘↵ 추가` : "⌘↵ 추가"}
+                </span>
+                <div className="btn-row">
+                  {hasText && (
+                    <button
+                      type="button"
+                      className="icon-btn btn-clear"
+                      onClick={clearDraft}
+                      aria-label="지우기"
+                    >
+                      <X size={15} />
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className={`icon-btn btn-ai${correcting ? " spinning" : ""}`}
+                    disabled={!hasText || correcting}
+                    onClick={() => onCorrectDraft(activeView, () => setAiOpen(true))}
+                    aria-label="AI 교정"
+                    title="AI 한국어 교정"
+                  >
+                    <Sparkles size={16} />
+                  </button>
+                  <button
+                    type="submit"
+                    className="icon-btn btn-submit"
+                    disabled={!hasText}
+                    aria-label="액션 추가"
+                  >
+                    <ArrowUp size={16} strokeWidth={2.5} />
+                  </button>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {activeView === "memos" && (
+        <>
+          <div className="ai-mode-row">
+            {AI_CORRECTION_GROUPS.map((g) => {
+              const active = g.key === "typo" ? aiMode === "typo"
+                           : g.key === "translate" ? aiMode === "translate"
+                           : !["typo", "translate"].includes(aiMode);
+              return (
+                <button
+                  key={g.key}
+                  type="button"
+                  className={`ai-mode-chip ${g.key}-chip${active ? " on" : ""}`}
+                  onClick={() => {
+                    if (g.key === "typo") setAiMode("typo");
+                    else if (g.key === "translate") setAiMode("translate");
+                    else if (["typo", "translate"].includes(aiMode)) setAiMode("grammar");
+                  }}
+                >
+                  {g.label}
+                </button>
+              );
+            })}
+          </div>
+          {!["typo", "translate"].includes(aiMode) && (
+            <div className="ai-mode-row ai-submode-row">
+              {AI_CORRECTION_MODES.filter((m) => m.group === "sentence").map((m) => (
+                <button
+                  key={m.key}
+                  type="button"
+                  className={`ai-mode-chip ${m.key}-chip${aiMode === m.key ? " on" : ""}`}
+                  onClick={() => setAiMode(m.key)}
+                >
+                  {m.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      {rateLimitInfo && (
+        <div className="rate-limit-bar">
+          <span>
+            {rateLimitInfo.type === "rpm"
+              ? `⏱ ${rateLimitSec}초 후 재시도 가능`
+              : rateLimitInfo.type === "rpd"
+                ? "일일 요청 한도 초과 · 내일 오후 4~5시 이후 이용 가능"
+                : "요청 한도 초과 · 한도 유형을 알 수 없습니다"}
+          </span>
+          <div style={{ display: "flex", gap: 10 }}>
+            {rateLimitInfo.type === "rpm" && (
+              <button type="button" className="rate-limit-dismiss" onClick={onDismissRateLimit}>
+                무시하고 재시도
+              </button>
+            )}
+            <button type="button" className="rate-limit-dismiss" onClick={onDismissRateLimit}>
+              중단
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="ai-row">
+        <button
+          type="button"
+          className="ai-key-btn"
+          onClick={() => setAiOpen((v) => !v)}
+        >
+          <KeyRound size={12} />
+          {aiSettings.apiKey ? "AI 설정됨" : "AI 설정"}
+        </button>
+        <button
+          type="button"
+          className={`ai-msg ${aiStatus.state}`}
+          onClick={() => setAiOpen(true)}
+          title={aiStatus.message}
+        >
+          {aiStatus.message}
+        </button>
+      </div>
+
+      {createPortal(
+        <AnimatePresence>
+          {cropData && (
+            <CropModal
+              key="crop-modal"
+              dataUrl={cropData.dataUrl}
+              mimeType={cropData.mimeType}
+              onCrop={handleCropConfirm}
+              onCancel={() => setCropData(null)}
+            />
+          )}
+        </AnimatePresence>,
+        document.body,
+      )}
+
+      <AnimatePresence initial={false}>
+        {aiOpen && (
+          <motion.div
+            className="ai-panel"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.15 }}
+          >
+            <input
+              type="password"
+              value={aiSettings.apiKey}
+              onChange={(e) => setAiSettings((s) => ({ ...s, apiKey: e.target.value.trim() }))}
+              placeholder="Gemini API key"
+              aria-label="Gemini API key"
+            />
+            <select
+              value={aiSettings.model}
+              onChange={(e) => setAiSettings((s) => ({ ...s, model: e.target.value }))}
+              aria-label="AI 모델"
+            >
+              {AI_MODELS.map((m) => (
+                <option key={m.key} value={m.key}>{m.label}</option>
+              ))}
+            </select>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.form>
+  );
+}
