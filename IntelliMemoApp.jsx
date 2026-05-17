@@ -49,7 +49,7 @@ const AI_MODELS = [
   { key: "gemini-2.5-pro",        label: "Gemini 2.5 Pro" },
   { key: "gemini-2.5-flash",      label: "Gemini 2.5 Flash 추천" },
   { key: "gemini-2.5-flash-lite", label: "Gemini 2.5 Flash-Lite" },
-  { key: "gemini-2.0-flash-lite", label: "Gemini 2.0 Flash-Lite" },
+  { key: "gemini-3.1-flash-lite", label: "Gemini 3.1 Flash-Lite" },
 ];
 
 const AI_CORRECTION_MODES = [
@@ -1945,6 +1945,7 @@ function Composer({
         if (!extracted.trim()) {
           setOcrState("error");
           setTimeout(() => setOcrState("idle"), 2000);
+          onOcrError({ model, message: "텍스트를 찾을 수 없습니다", type: "ocr" });
           return;
         }
         setMemoText((prev) => prev ? `${prev}\n${extracted}` : extracted);
@@ -1969,7 +1970,7 @@ function Composer({
     const message = lastError instanceof Error ? lastError.message : "OCR 실패";
     setOcrState("error");
     setTimeout(() => setOcrState("idle"), 2000);
-    onOcrError({ model: lastModel, message });
+    onOcrError({ model: lastModel, message, type: "ocr" });
   };
   const draftText  = activeView === "memos" ? memoText : actionText;
   const hasText    = draftText.trim().length > 0;
@@ -2367,9 +2368,11 @@ function ErrorModal({ error, onClose }) {
         <div className="err-modal-icon">
           <Sparkles size={20} />
         </div>
-        <h2 className="err-modal-title">AI 교정 실패</h2>
+        <h2 className="err-modal-title">
+          {error.type === "ocr" ? "이미지 텍스트 추출 실패" : "AI 교정 실패"}
+        </h2>
         <p className="err-modal-msg">{error.message}</p>
-        <p className="err-modal-model">마지막 모델: {error.model}</p>
+        <p className="err-modal-model">모델: {error.model}</p>
         <button type="button" className="err-modal-close" onClick={onClose}>
           확인
         </button>
@@ -2953,7 +2956,7 @@ export default function IntelliMemoApp() {
     openSettings();
     const message = lastError instanceof Error ? lastError.message : "교정 실패";
     setAiStatus({ state: "error", message });
-    setAiError({ model: lastModel, message });
+    setAiError({ model: lastModel, message, type: "correction" });
   }, [memoText, actionText, aiSettings]);
 
   const frameClass = `frame force-${layoutMode}`;
