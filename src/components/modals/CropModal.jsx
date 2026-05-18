@@ -211,7 +211,7 @@ export function CropModal({ dataUrl, mimeType, onCrop, onCancel }) {
       >
         <div className="crop-modal-hdr">
           <h2>텍스트 영역 선택 <span>꼭지점·내부 드래그로 조정</span></h2>
-          <button type="button" className="crop-close-btn" onClick={onCancel}>
+          <button type="button" className="crop-close-btn" aria-label="닫기" onClick={onCancel}>
             <X size={14} />
           </button>
         </div>

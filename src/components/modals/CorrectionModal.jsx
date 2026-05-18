@@ -33,7 +33,7 @@ export function CorrectionModal({
       >
         <div className="correction-modal-hdr">
           <h2>{title} <span>AI가 제안한 내용입니다</span></h2>
-          <button type="button" className="correction-close-btn" onClick={onCancel}>
+          <button type="button" className="correction-close-btn" aria-label="닫기" onClick={onCancel}>
             <X size={14} />
           </button>
         </div>

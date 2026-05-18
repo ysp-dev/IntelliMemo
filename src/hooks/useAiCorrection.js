@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AI_CORRECTION_MODES,
   AI_SETTINGS_STORAGE_KEY,
@@ -16,6 +16,7 @@ export function useAiCorrection({ memoText, actionText, setMemoText, setActionTe
   const [pendingCorrection, setPendingCorrection] = useState(null);
   const [rateLimitInfo,     setRateLimitInfo]    = useState(null);
   const [rateLimitSec,      setRateLimitSec]     = useState(0);
+  const idleTimerRef = useRef(null);
 
   useEffect(() => {
     if (rateLimitInfo?.type !== "rpm") { setRateLimitSec(0); return; }
@@ -47,6 +48,7 @@ export function useAiCorrection({ memoText, actionText, setMemoText, setActionTe
 
     const modeConfig = AI_CORRECTION_MODES.find((m) => m.key === mode) ?? AI_CORRECTION_MODES[0];
 
+    clearTimeout(idleTimerRef.current);
     setAiError(null);
     const fallbacks = getModelFallbacks(normalizeModel(aiSettings.model));
     let lastError = null;
@@ -71,7 +73,7 @@ export function useAiCorrection({ memoText, actionText, setMemoText, setActionTe
           else setActionText(corrected);
           setAiStatus({ state: "success", message: "교정 완료 ✓" });
         }
-        setTimeout(() => setAiStatus({ state: "idle", message: `Gemini · ${model}` }), 2500);
+        idleTimerRef.current = setTimeout(() => setAiStatus({ state: "idle", message: `Gemini · ${model}` }), 2500);
         return;
       } catch (err) {
         if (err.status === 429 && (err.limitType ?? "unknown") === "rpd") {
