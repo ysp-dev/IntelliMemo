@@ -358,7 +358,7 @@ textarea { resize: none; }
 .memo-body {
   margin: 0;
   font-size: 14px; font-weight: 400; line-height: 1.65;
-  color: var(--t1); overflow-wrap: anywhere;
+  color: var(--t1); overflow-wrap: anywhere; white-space: pre-wrap;
 }
 
 .memo-body.truncated {
@@ -438,7 +438,7 @@ textarea { resize: none; }
 .action-text {
   margin: 0 0 6px;
   font-size: 14px; font-weight: 500; line-height: 1.55;
-  color: var(--t1); overflow-wrap: anywhere;
+  color: var(--t1); overflow-wrap: anywhere; white-space: pre-wrap;
 }
 .action-card.done .action-text { text-decoration: line-through; color: var(--t3); }
 

@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(sed -n '311,1365p' /Users/youngsoonpark/Projects/intelli-memo/IntelliMemoApp.jsx | sed 's/^  //' > /Users/youngsoonpark/Projects/intelli-memo/src/app.css && wc -l /Users/youngsoonpark/Projects/intelli-memo/src/app.css)",
-      "Bash(npm run *)"
+      "Bash(npm run *)",
+      "Bash(git push*)"
     ],
     "additionalDirectories": [
       "/Users/youngsoonpark/Projects/intelli-memo/src"
