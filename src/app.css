@@ -572,6 +572,13 @@ textarea { resize: none; }
   color: var(--t3); background: var(--raised);
 }
 
+.btn-copy {
+  color: var(--t2); background: var(--raised);
+  transition: background 120ms ease, color 120ms ease;
+}
+.btn-copy:hover { background: rgba(0,0,0,0.08); color: var(--t1); }
+.btn-copy.copied { color: var(--accent); }
+
 .btn-camera, .btn-gallery {
   color: var(--t2); background: var(--raised);
   transition: background 120ms ease, color 120ms ease;

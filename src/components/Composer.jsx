@@ -5,6 +5,8 @@ import {
   ArrowUp,
   CalendarDays,
   Camera,
+  Check,
+  Copy,
   Flame,
   ImagePlus,
   KeyRound,
@@ -48,10 +50,11 @@ export function Composer({
   const actionRef = useRef(null);
   const cameraRef  = useRef(null);
   const galleryRef = useRef(null);
-  const [aiOpen,   setAiOpen]   = useState(false);
-  const [aiMode,   setAiMode]   = useState(DEFAULT_AI_CORRECTION_MODE);
-  const [ocrState, setOcrState] = useState("idle");
-  const [cropData, setCropData] = useState(null);
+  const [aiOpen,    setAiOpen]    = useState(false);
+  const [aiMode,    setAiMode]    = useState(DEFAULT_AI_CORRECTION_MODE);
+  const [ocrState,  setOcrState]  = useState("idle");
+  const [cropData,  setCropData]  = useState(null);
+  const [copyState, setCopyState] = useState("idle");
 
   const correcting = aiStatus.state === "loading";
 
@@ -157,6 +160,18 @@ export function Composer({
     else setActionText("");
   };
 
+  const copyDraft = async () => {
+    const text = activeView === "memos" ? memoText : actionText;
+    if (!text.trim()) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopyState("done");
+      setTimeout(() => setCopyState("idle"), 1500);
+    } catch {
+      setCopyState("idle");
+    }
+  };
+
   return (
     <motion.form
       className="composer"
@@ -224,6 +239,17 @@ export function Composer({
                       aria-label="지우기"
                     >
                       <X size={15} />
+                    </button>
+                  )}
+                  {hasText && (
+                    <button
+                      type="button"
+                      className={`icon-btn btn-copy${copyState === "done" ? " copied" : ""}`}
+                      onClick={copyDraft}
+                      aria-label="복사"
+                      title="텍스트 복사"
+                    >
+                      {copyState === "done" ? <Check size={15} /> : <Copy size={15} />}
                     </button>
                   )}
                   <button
