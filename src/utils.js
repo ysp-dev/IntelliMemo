@@ -107,8 +107,11 @@ export const getOcrModelFallbacks = (model) =>
 export const normalizeOcrModel = (model) =>
   OCR_MODELS.some((m) => m.key === model) ? model : DEFAULT_OCR_MODEL;
 
-export const normalizeOcrMode = (mode) =>
-  OCR_MODES.some((m) => m.key === mode) ? mode : DEFAULT_OCR_MODE;
+export const normalizeOcrMode = (mode) => {
+  if (mode === "local-first" || mode === "local-only") return "vision";
+  if (mode === "cloud-only") return "ai-model";
+  return OCR_MODES.some((m) => m.key === mode) ? mode : DEFAULT_OCR_MODE;
+};
 
 export const extractText = (res) => {
   for (const c of res.candidates ?? []) {
