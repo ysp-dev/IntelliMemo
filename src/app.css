@@ -100,15 +100,15 @@ textarea { resize: none; }
 
 .brand-logo {
   display: block;
-  width: clamp(104px, 28vw, 136px);
+  width: clamp(164px, 46vw, 214px);
   height: auto;
-  max-height: 34px;
+  max-height: 42px;
   object-fit: contain;
   object-position: left center;
 }
 
 .hdr.compact .brand-logo {
-  width: clamp(100px, 27vw, 128px);
+  width: clamp(154px, 42vw, 196px);
 }
 
 .sr-only {
@@ -163,7 +163,7 @@ textarea { resize: none; }
 @media (min-width: 720px) {
   .brand-logo,
   .hdr.compact .brand-logo {
-    width: clamp(112px, 30vw, 154px);
+    width: clamp(184px, 30vw, 250px);
   }
 
   .hdr-actions {
