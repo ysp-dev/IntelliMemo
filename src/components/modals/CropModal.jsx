@@ -9,6 +9,7 @@ export function CropModal({ dataUrl, mimeType, onCrop, onCancel }) {
   const canvasRef = useRef(null);
   const imgRef    = useRef(null);
   const cropRef   = useRef(null);
+  const imageViewRef = useRef({ scale: 1, offsetX: 0, offsetY: 0 });
   const dragRef   = useRef(null);
 
   const getHandleScale = (canvas) => {
@@ -20,7 +21,7 @@ export function CropModal({ dataUrl, mimeType, onCrop, onCancel }) {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const cursor = {
-      move: "grab",
+      image: "grab",
       tl: "nwse-resize",
       br: "nwse-resize",
       tr: "nesw-resize",
@@ -34,13 +35,38 @@ export function CropModal({ dataUrl, mimeType, onCrop, onCancel }) {
     canvas.style.cursor = cursor;
   };
 
+  const clampImageView = useCallback((view = imageViewRef.current, crop = cropRef.current) => {
+    const canvas = canvasRef.current;
+    if (!canvas || !crop) return view;
+    const scale = Math.max(1, view.scale || 1);
+    const imageW = canvas.width * scale;
+    const imageH = canvas.height * scale;
+    const minX = crop.x2 - imageW;
+    const maxX = crop.x1;
+    const minY = crop.y2 - imageH;
+    const maxY = crop.y1;
+    const next = {
+      scale,
+      offsetX: Math.max(minX, Math.min(maxX, view.offsetX)),
+      offsetY: Math.max(minY, Math.min(maxY, view.offsetY)),
+    };
+    imageViewRef.current = next;
+    return next;
+  }, []);
+
   const redraw = useCallback(() => {
     const canvas = canvasRef.current;
     const img    = imgRef.current;
     if (!canvas || !img) return;
     const ctx = canvas.getContext("2d");
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    const view = imageViewRef.current;
+    const imageW = canvas.width * view.scale;
+    const imageH = canvas.height * view.scale;
+    ctx.drawImage(img, view.offsetX, view.offsetY, imageW, imageH);
 
     const c = cropRef.current;
     if (!c) return;
@@ -107,8 +133,10 @@ export function CropModal({ dataUrl, mimeType, onCrop, onCancel }) {
     if (!canvas) return;
     const pad = Math.min(canvas.width, canvas.height) * 0.04;
     cropRef.current = { x1: pad, y1: pad, x2: canvas.width - pad, y2: canvas.height - pad };
+    imageViewRef.current = { scale: 1, offsetX: 0, offsetY: 0 };
+    clampImageView();
     redraw();
-  }, [redraw]);
+  }, [clampImageView, redraw]);
 
   useEffect(() => {
     const img = new Image();
@@ -150,7 +178,7 @@ export function CropModal({ dataUrl, mimeType, onCrop, onCancel }) {
     if (p.x >= x1 - R && p.x <= x2 + R && Math.abs(p.y - y2) <= R) return "bottom";
     if (p.y >= y1 - R && p.y <= y2 + R && Math.abs(p.x - x1) <= R) return "left";
     if (p.y >= y1 - R && p.y <= y2 + R && Math.abs(p.x - x2) <= R) return "right";
-    if (p.x > x1 && p.x < x2 && p.y > y1 && p.y < y2) return "move";
+    if (p.x > x1 && p.x < x2 && p.y > y1 && p.y < y2) return "image";
     return null;
   };
 
@@ -159,9 +187,15 @@ export function CropModal({ dataUrl, mimeType, onCrop, onCancel }) {
     const p   = toCanvas(e);
     const hit = hitTest(p);
     if (hit) {
-      dragRef.current = { type: hit, startX: p.x, startY: p.y, startCrop: { ...cropRef.current } };
+      dragRef.current = {
+        type: hit,
+        startX: p.x,
+        startY: p.y,
+        startCrop: { ...cropRef.current },
+        startImageView: { ...imageViewRef.current },
+      };
       try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch {}
-      setCanvasCursor(hit === "move" ? "grabbing" : hit);
+      setCanvasCursor(hit === "image" ? "grabbing" : hit);
       redraw();
     }
   };
@@ -173,25 +207,26 @@ export function CropModal({ dataUrl, mimeType, onCrop, onCancel }) {
     }
     e.preventDefault();
     const p  = toCanvas(e);
-    const { type, startX, startY, startCrop: sc } = dragRef.current;
+    const { type, startX, startY, startCrop: sc, startImageView } = dragRef.current;
     const canvas = canvasRef.current;
     const MIN    = 30;
     const dx = p.x - startX, dy = p.y - startY;
     let { x1, y1, x2, y2 } = sc;
 
-    if (type === "move") {
-      const w = x2 - x1, h = y2 - y1;
-      x1 = Math.max(0, Math.min(canvas.width  - w, sc.x1 + dx));
-      y1 = Math.max(0, Math.min(canvas.height - h, sc.y1 + dy));
-      x2 = x1 + w; y2 = y1 + h;
+    if (type === "image") {
+      clampImageView({
+        ...startImageView,
+        offsetX: startImageView.offsetX + dx,
+        offsetY: startImageView.offsetY + dy,
+      });
     } else {
       if (["tl", "bl", "left"].includes(type)) x1 = Math.max(0, Math.min(sc.x2 - MIN, sc.x1 + dx));
       if (["tr", "br", "right"].includes(type)) x2 = Math.min(canvas.width, Math.max(sc.x1 + MIN, sc.x2 + dx));
       if (["tl", "tr", "top"].includes(type)) y1 = Math.max(0, Math.min(sc.y2 - MIN, sc.y1 + dy));
       if (["bl", "br", "bottom"].includes(type)) y2 = Math.min(canvas.height, Math.max(sc.y1 + MIN, sc.y2 + dy));
+      cropRef.current = { x1, y1, x2, y2 };
+      clampImageView();
     }
-
-    cropRef.current = { x1, y1, x2, y2 };
     redraw();
   };
 
@@ -221,15 +256,18 @@ export function CropModal({ dataUrl, mimeType, onCrop, onCancel }) {
       out.height = Math.round(img.naturalHeight * scale);
       ctx.drawImage(img, 0, 0, out.width, out.height);
     } else {
-      const sx = img.naturalWidth  / canvas.width;
-      const sy = img.naturalHeight / canvas.height;
+      const view = imageViewRef.current;
+      const sx = img.naturalWidth  / (canvas.width * view.scale);
+      const sy = img.naturalHeight / (canvas.height * view.scale);
       const { x1, y1, x2, y2 } = c;
-      const cropW = (x2 - x1) * sx;
-      const cropH = (y2 - y1) * sy;
+      const srcX = Math.max(0, (x1 - view.offsetX) * sx);
+      const srcY = Math.max(0, (y1 - view.offsetY) * sy);
+      const cropW = Math.min(img.naturalWidth - srcX, (x2 - x1) * sx);
+      const cropH = Math.min(img.naturalHeight - srcY, (y2 - y1) * sy);
       const scale = Math.min(1, MAX_PX / cropW, MAX_PX / cropH);
       out.width  = Math.round(cropW * scale);
       out.height = Math.round(cropH * scale);
-      ctx.drawImage(img, x1 * sx, y1 * sy, cropW, cropH, 0, 0, out.width, out.height);
+      ctx.drawImage(img, srcX, srcY, cropW, cropH, 0, 0, out.width, out.height);
     }
 
     const outMime = mimeType === "image/png" ? "image/png" : "image/jpeg";
@@ -260,7 +298,7 @@ export function CropModal({ dataUrl, mimeType, onCrop, onCancel }) {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="crop-modal-hdr">
-          <h2>텍스트 영역 선택 <span>모서리·변·내부를 드래그</span></h2>
+          <h2>텍스트 영역 선택 <span>모서리·변 조절, 내부 사진 이동</span></h2>
           <button type="button" className="crop-close-btn" aria-label="닫기" onClick={onCancel}>
             <X size={14} />
           </button>
