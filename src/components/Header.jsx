@@ -10,6 +10,8 @@ import {
   Sparkles,
   X,
 } from "lucide-react";
+import logoDark from "../assets/intelli-logo-dark.png?inline";
+import logoLight from "../assets/intelli-logo-light.png?inline";
 import { ACTION_FILTERS } from "../constants.js";
 
 export function Header({
@@ -27,9 +29,13 @@ export function Header({
       <div className="hdr-body">
         <div className="hdr-top">
           <div className="brand">
-            <h1>Intelligent Memo</h1>
+            <picture className="brand-logo-picture">
+              <source media="(prefers-color-scheme: dark)" srcSet={logoDark} />
+              <img className="brand-logo" src={logoLight} alt="Intelli Memo" />
+            </picture>
+            <h1 className="sr-only">Intelli Memo</h1>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <div className="hdr-actions">
             <button
               type="button"
               className={`layout-toggle-btn${searchOpen ? " search-active" : ""}`}
