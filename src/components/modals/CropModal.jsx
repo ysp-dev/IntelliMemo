@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { X } from "lucide-react";
 import { useFocusTrap } from "../../hooks/useFocusTrap.js";
@@ -13,6 +13,8 @@ export function CropModal({ dataUrl, mimeType, onCrop, onCancel }) {
   const dragRef   = useRef(null);
   const pinchRef  = useRef(null);
   const pointersRef = useRef(new Map());
+  const saveTimerRef = useRef(null);
+  const [savePreview, setSavePreview] = useState(null);
 
   const MAX_IMAGE_SCALE = 5;
 
@@ -155,6 +157,10 @@ export function CropModal({ dataUrl, mimeType, onCrop, onCancel }) {
     };
     img.src = dataUrl;
   }, [dataUrl, initCrop]);
+
+  useEffect(() => () => {
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+  }, []);
 
   const toCanvas = (e) => {
     const canvas = canvasRef.current;
@@ -336,6 +342,39 @@ export function CropModal({ dataUrl, mimeType, onCrop, onCancel }) {
     onCrop(dataUrl.split(",")[1], outMime);
   };
 
+  const handleSaveImage = async () => {
+    const result = getCroppedCanvas();
+    if (!result) return;
+    const { out, outMime } = result;
+    const ext = outMime === "image/png" ? "png" : "jpg";
+    const savedAt = Date.now();
+    const dataUrl = out.toDataURL(outMime, outMime === "image/jpeg" ? 0.92 : undefined);
+
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    setSavePreview({ dataUrl, status: "saving", message: "저장 준비 중" });
+
+    try {
+      const blob = await fetch(dataUrl).then((r) => r.blob());
+      const file = new File([blob], `memo-${savedAt}.${ext}`, { type: outMime });
+      if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file], title: "메모 이미지" });
+      } else {
+        const a = document.createElement("a");
+        a.href = dataUrl;
+        a.download = `memo-${savedAt}.${ext}`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      }
+      setSavePreview({ dataUrl, status: "saved", message: "저장 완료" });
+    } catch (e) {
+      console.error(e);
+      setSavePreview({ dataUrl, status: "error", message: "저장 실패" });
+    }
+
+    saveTimerRef.current = setTimeout(() => setSavePreview(null), 1800);
+  };
+
   return (
     <motion.div
       className="crop-overlay"
@@ -369,31 +408,17 @@ export function CropModal({ dataUrl, mimeType, onCrop, onCancel }) {
               if (!dragRef.current) setCanvasCursor(null);
             }}
           />
+          {savePreview && (
+            <div className={`crop-save-preview ${savePreview.status}`}>
+              <img src={savePreview.dataUrl} alt="크롭 저장 미리보기" />
+              <span>{savePreview.message}</span>
+            </div>
+          )}
         </div>
         <div className="crop-modal-footer">
           <button type="button" className="crop-cancel-btn" onClick={onCancel}>취소</button>
           <button type="button" className="crop-reset-btn" onClick={initCrop}>초기화</button>
-          <button type="button" className="crop-save-btn" onClick={async () => {
-            const result = getCroppedCanvas();
-            if (!result) return;
-            const { out, outMime } = result;
-            const ext     = outMime === "image/png" ? "png" : "jpg";
-            const dataUrl = out.toDataURL(outMime, outMime === "image/jpeg" ? 0.92 : undefined);
-            try {
-              const blob = await fetch(dataUrl).then(r => r.blob());
-              const file = new File([blob], `memo-${Date.now()}.${ext}`, { type: outMime });
-              if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
-                await navigator.share({ files: [file], title: "메모 이미지" });
-              } else {
-                const a = document.createElement("a");
-                a.href = dataUrl;
-                a.download = `memo-${Date.now()}.${ext}`;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-              }
-            } catch (e) { console.error(e); }
-          }}>이미지 저장</button>
+          <button type="button" className="crop-save-btn" onClick={handleSaveImage}>이미지 저장</button>
           <button type="button" className="crop-apply-btn" onClick={handleApply}>텍스트 추출</button>
         </div>
       </motion.div>
