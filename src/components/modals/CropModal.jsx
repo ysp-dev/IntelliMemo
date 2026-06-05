@@ -11,6 +11,10 @@ export function CropModal({ dataUrl, mimeType, onCrop, onCancel }) {
   const cropRef   = useRef(null);
   const imageViewRef = useRef({ scale: 1, offsetX: 0, offsetY: 0 });
   const dragRef   = useRef(null);
+  const pinchRef  = useRef(null);
+  const pointersRef = useRef(new Map());
+
+  const MAX_IMAGE_SCALE = 5;
 
   const getHandleScale = (canvas) => {
     const rect = canvas.getBoundingClientRect();
@@ -38,7 +42,7 @@ export function CropModal({ dataUrl, mimeType, onCrop, onCancel }) {
   const clampImageView = useCallback((view = imageViewRef.current, crop = cropRef.current) => {
     const canvas = canvasRef.current;
     if (!canvas || !crop) return view;
-    const scale = Math.max(1, view.scale || 1);
+    const scale = Math.max(1, Math.min(MAX_IMAGE_SCALE, view.scale || 1));
     const imageW = canvas.width * scale;
     const imageH = canvas.height * scale;
     const minX = crop.x2 - imageW;
@@ -162,6 +166,25 @@ export function CropModal({ dataUrl, mimeType, onCrop, onCancel }) {
     };
   };
 
+  const getPointerPair = () => [...pointersRef.current.values()].slice(0, 2);
+  const getDistance = ([a, b]) => Math.hypot(b.x - a.x, b.y - a.y);
+  const getCenter = ([a, b]) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+
+  const startPinch = () => {
+    const pair = getPointerPair();
+    if (pair.length < 2) return;
+    const distance = getDistance(pair);
+    if (distance <= 0) return;
+    pinchRef.current = {
+      startDistance: distance,
+      startCenter: getCenter(pair),
+      startImageView: { ...imageViewRef.current },
+    };
+    dragRef.current = null;
+    setCanvasCursor("grabbing");
+    redraw();
+  };
+
   const hitTest = (p) => {
     const c = cropRef.current;
     if (!c) return null;
@@ -178,13 +201,21 @@ export function CropModal({ dataUrl, mimeType, onCrop, onCancel }) {
     if (p.x >= x1 - R && p.x <= x2 + R && Math.abs(p.y - y2) <= R) return "bottom";
     if (p.y >= y1 - R && p.y <= y2 + R && Math.abs(p.x - x1) <= R) return "left";
     if (p.y >= y1 - R && p.y <= y2 + R && Math.abs(p.x - x2) <= R) return "right";
-    if (p.x > x1 && p.x < x2 && p.y > y1 && p.y < y2) return "image";
+    if (p.x >= 0 && p.x <= canvas.width && p.y >= 0 && p.y <= canvas.height) return "image";
     return null;
   };
 
   const onDown = (e) => {
     e.preventDefault();
     const p   = toCanvas(e);
+    pointersRef.current.set(e.pointerId, p);
+    try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch {}
+
+    if (pointersRef.current.size >= 2) {
+      startPinch();
+      return;
+    }
+
     const hit = hitTest(p);
     if (hit) {
       dragRef.current = {
@@ -194,13 +225,34 @@ export function CropModal({ dataUrl, mimeType, onCrop, onCancel }) {
         startCrop: { ...cropRef.current },
         startImageView: { ...imageViewRef.current },
       };
-      try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch {}
       setCanvasCursor(hit === "image" ? "grabbing" : hit);
       redraw();
     }
   };
 
   const onMove = (e) => {
+    if (pointersRef.current.has(e.pointerId)) {
+      pointersRef.current.set(e.pointerId, toCanvas(e));
+    }
+
+    if (pinchRef.current && pointersRef.current.size >= 2) {
+      e.preventDefault();
+      const pair = getPointerPair();
+      const distance = getDistance(pair);
+      const center = getCenter(pair);
+      const { startDistance, startCenter, startImageView } = pinchRef.current;
+      const nextScale = startImageView.scale * (distance / startDistance);
+      const imagePointX = (startCenter.x - startImageView.offsetX) / startImageView.scale;
+      const imagePointY = (startCenter.y - startImageView.offsetY) / startImageView.scale;
+      clampImageView({
+        scale: nextScale,
+        offsetX: center.x - imagePointX * nextScale,
+        offsetY: center.y - imagePointY * nextScale,
+      });
+      redraw();
+      return;
+    }
+
     if (!dragRef.current) {
       setCanvasCursor(hitTest(toCanvas(e)));
       return;
@@ -232,7 +284,9 @@ export function CropModal({ dataUrl, mimeType, onCrop, onCancel }) {
 
   const onUp = (e) => {
     e.preventDefault();
+    pointersRef.current.delete(e.pointerId);
     dragRef.current = null;
+    if (pointersRef.current.size < 2) pinchRef.current = null;
     try {
       if (e.currentTarget.hasPointerCapture?.(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
     } catch {}
@@ -298,7 +352,7 @@ export function CropModal({ dataUrl, mimeType, onCrop, onCancel }) {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="crop-modal-hdr">
-          <h2>텍스트 영역 선택 <span>모서리·변 조절, 내부 사진 이동</span></h2>
+          <h2>텍스트 영역 선택 <span>모서리·변 조절, 드래그·핀치로 사진 맞춤</span></h2>
           <button type="button" className="crop-close-btn" aria-label="닫기" onClick={onCancel}>
             <X size={14} />
           </button>
