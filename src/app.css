@@ -58,6 +58,7 @@ textarea { resize: none; }
 
 /* ── 모바일 세로: flex 3단 (헤더 → 입력 → 목록) ── */
 .frame {
+  position: relative;
   display: flex;
   flex-direction: column;
   width: min(100vw, 430px);
@@ -190,6 +191,44 @@ textarea { resize: none; }
   overscroll-behavior: contain;
 }
 .stage::-webkit-scrollbar { display: none; }
+
+.pull-refresh-indicator {
+  position: absolute;
+  top: calc(env(safe-area-inset-top) + 8px);
+  left: 50%;
+  z-index: 40;
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  color: var(--accent-mid);
+  background: rgba(255,255,255,0.96);
+  border: 1px solid rgba(255,255,255,0.82);
+  box-shadow: 0 16px 38px rgba(36,22,64,0.13), 0 3px 10px rgba(0,0,0,0.06);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  transition: opacity 140ms ease, transform 170ms cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: opacity, transform;
+}
+
+.pull-refresh-indicator svg {
+  transform: rotate(var(--pull-rotation, 0deg));
+  transition: transform 70ms linear;
+}
+
+.pull-refresh-indicator.armed {
+  color: var(--accent);
+}
+
+.pull-refresh-indicator.refreshing svg {
+  animation: pull-refresh-spin 0.72s linear infinite;
+}
+
+@keyframes pull-refresh-spin {
+  to { transform: rotate(360deg); }
+}
 
 .app-footer {
   text-align: center; padding: 20px 0 4px;

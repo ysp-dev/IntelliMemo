@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import './src/app.css';
 import { AnimatePresence, motion } from "framer-motion";
+import { RotateCw } from "lucide-react";
 
 import {
   DEFAULT_TAG,
@@ -38,6 +39,9 @@ import { UndoToast } from "./src/components/UndoToast.jsx";
 import { ErrorModal } from "./src/components/modals/ErrorModal.jsx";
 import { CorrectionModal } from "./src/components/modals/CorrectionModal.jsx";
 
+const PULL_REFRESH_THRESHOLD = 72;
+const PULL_REFRESH_MAX = 98;
+
 export default function IntelliMemoApp() {
   const [activeView,     setActiveView]     = useState("memos");
   const [layoutMode,     setLayoutMode]     = useState(() =>
@@ -58,11 +62,16 @@ export default function IntelliMemoApp() {
   const [toast,          setToast]          = useState(null);
   const [isLoaded,       setIsLoaded]       = useState(false);
   const [scrollTop,      setScrollTop]      = useState(0);
+  const [pullDistance,   setPullDistance]   = useState(0);
+  const [isRefreshing,   setIsRefreshing]   = useState(false);
   const [tick,           setTick]           = useState(Date.now());
 
   const hasHydrated  = useRef(false);
   const toastTimer   = useRef(null);
   const scrollRafRef = useRef(null);
+  const pullStartRef = useRef(null);
+  const pullDistanceRef = useRef(0);
+  const refreshTimer = useRef(null);
 
   const {
     aiSettings, setAiSettings,
@@ -120,6 +129,10 @@ export default function IntelliMemoApp() {
   useEffect(() => {
     const id = setInterval(() => setTick(Date.now()), 30_000);
     return () => clearInterval(id);
+  }, []);
+
+  useEffect(() => () => {
+    if (refreshTimer.current) clearTimeout(refreshTimer.current);
   }, []);
 
   // ── Persist ──
@@ -241,11 +254,84 @@ export default function IntelliMemoApp() {
     });
   }, []);
 
+  const startPullRefresh = useCallback(() => {
+    if (isRefreshing) return;
+    setIsRefreshing(true);
+    pullDistanceRef.current = PULL_REFRESH_THRESHOLD;
+    setPullDistance(PULL_REFRESH_THRESHOLD);
+    refreshTimer.current = setTimeout(() => {
+      window.location.reload();
+    }, 620);
+  }, [isRefreshing]);
+
+  const handlePullStart = useCallback((e) => {
+    if (isRefreshing || e.currentTarget.scrollTop > 0) return;
+    const touch = e.touches?.[0];
+    if (!touch) return;
+    pullStartRef.current = { x: touch.clientX, y: touch.clientY };
+  }, [isRefreshing]);
+
+  const handlePullMove = useCallback((e) => {
+    const start = pullStartRef.current;
+    const touch = e.touches?.[0];
+    if (!start || !touch || isRefreshing) return;
+
+    if (e.currentTarget.scrollTop > 0) {
+      pullStartRef.current = null;
+      pullDistanceRef.current = 0;
+      setPullDistance(0);
+      return;
+    }
+
+    const deltaY = touch.clientY - start.y;
+    const deltaX = Math.abs(touch.clientX - start.x);
+    if (deltaY <= 0) {
+      pullDistanceRef.current = 0;
+      setPullDistance(0);
+      return;
+    }
+    if (deltaX > deltaY) return;
+
+    const nextDistance = Math.min(PULL_REFRESH_MAX, deltaY * 0.46);
+    if (nextDistance > 4) {
+      e.preventDefault();
+      pullDistanceRef.current = nextDistance;
+      setPullDistance(nextDistance);
+    }
+  }, [isRefreshing]);
+
+  const handlePullEnd = useCallback(() => {
+    if (isRefreshing) return;
+    const shouldRefresh = pullDistanceRef.current >= PULL_REFRESH_THRESHOLD;
+    pullStartRef.current = null;
+    if (shouldRefresh) {
+      startPullRefresh();
+      return;
+    }
+    pullDistanceRef.current = 0;
+    setPullDistance(0);
+  }, [isRefreshing, startPullRefresh]);
+
   const frameClass = `frame force-${layoutMode}`;
+  const pullProgress = Math.min(1, pullDistance / PULL_REFRESH_THRESHOLD);
+  const pullIndicatorVisible = pullDistance > 0 || isRefreshing;
+  const pullIndicatorStyle = {
+    "--pull-rotation": `${pullProgress * 340}deg`,
+    opacity: pullIndicatorVisible ? Math.min(1, 0.24 + pullProgress) : 0,
+    transform: `translate3d(-50%, ${isRefreshing ? 58 : pullDistance - 44}px, 0) scale(${0.86 + pullProgress * 0.14})`,
+  };
 
   return (
     <main className="app">
       <div className={frameClass}>
+        <div
+          className={`pull-refresh-indicator${isRefreshing ? " refreshing" : ""}${pullDistance >= PULL_REFRESH_THRESHOLD ? " armed" : ""}`}
+          style={pullIndicatorStyle}
+          aria-hidden="true"
+        >
+          <RotateCw size={30} strokeWidth={2.35} />
+        </div>
+
         <Header
           activeView={activeView}
           setActiveView={setActiveView}
@@ -283,7 +369,14 @@ export default function IntelliMemoApp() {
           onDismissRateLimit={() => setRateLimitInfo(null)}
         />
 
-        <section className="stage" onScroll={handleScroll}>
+        <section
+          className="stage"
+          onScroll={handleScroll}
+          onTouchStart={handlePullStart}
+          onTouchMove={handlePullMove}
+          onTouchEnd={handlePullEnd}
+          onTouchCancel={handlePullEnd}
+        >
           <AnimatePresence mode="wait" initial={false}>
             {activeView === "memos" ? (
               <motion.div
