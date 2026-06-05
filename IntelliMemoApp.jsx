@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from "framer-motion";
 
 import {
   DEFAULT_TAG,
+  DEFAULT_OCR_MODE,
   DEFAULT_OCR_MODEL,
   DEFAULT_OPENAI_MODEL,
   OCR_API_KEY_SESSION_KEY,
@@ -18,6 +19,7 @@ import {
   dateGroupLabel,
   loadJson,
   loadSessionValue,
+  normalizeOcrMode,
   normalizeOcrModel,
   normalizeOpenAiModel,
   nowIso,
@@ -48,7 +50,7 @@ export default function IntelliMemoApp() {
   const [actionText,     setActionText]     = useState("");
   const [actionDueDate,  setActionDueDate]  = useState("");
   const [actionPriority, setActionPriority] = useState("normal");
-  const [ocrSettings,    setOcrSettings]    = useState({ apiKey: "", model: DEFAULT_OCR_MODEL });
+  const [ocrSettings,    setOcrSettings]    = useState({ apiKey: "", model: DEFAULT_OCR_MODEL, mode: DEFAULT_OCR_MODE });
   const [actionFilter,   setActionFilter]   = useState("all");
   const [tagFilter,      setTagFilter]      = useState("all");
   const [searchQuery,    setSearchQuery]    = useState("");
@@ -80,7 +82,7 @@ export default function IntelliMemoApp() {
         loadJson("memos",      []),
         loadJson("actions",    []),
         loadJson(OPENAI_SETTINGS_STORAGE_KEY, { model: DEFAULT_OPENAI_MODEL }),
-        loadJson(OCR_SETTINGS_STORAGE_KEY, { model: DEFAULT_OCR_MODEL }),
+        loadJson(OCR_SETTINGS_STORAGE_KEY, { model: DEFAULT_OCR_MODEL, mode: DEFAULT_OCR_MODE }),
       ]);
       if (!alive) return;
 
@@ -95,7 +97,8 @@ export default function IntelliMemoApp() {
 
       if (socr && typeof socr === "object") {
         const model = normalizeOcrModel(socr.model);
-        setOcrSettings({ apiKey: loadSessionValue(OCR_API_KEY_SESSION_KEY), model });
+        const mode = normalizeOcrMode(socr.mode);
+        setOcrSettings({ apiKey: loadSessionValue(OCR_API_KEY_SESSION_KEY), model, mode });
       }
 
       hasHydrated.current = true;
@@ -124,7 +127,10 @@ export default function IntelliMemoApp() {
   useEffect(() => { if (hasHydrated.current) saveJson("actions", actions); }, [actions]);
   useEffect(() => {
     if (!hasHydrated.current) return;
-    saveJson(OCR_SETTINGS_STORAGE_KEY, { model: normalizeOcrModel(ocrSettings.model) });
+    saveJson(OCR_SETTINGS_STORAGE_KEY, {
+      model: normalizeOcrModel(ocrSettings.model),
+      mode: normalizeOcrMode(ocrSettings.mode),
+    });
     saveSessionValue(OCR_API_KEY_SESSION_KEY, ocrSettings.apiKey);
   }, [ocrSettings]);
 

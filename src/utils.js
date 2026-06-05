@@ -1,6 +1,8 @@
 import {
+  DEFAULT_OCR_MODE,
   DEFAULT_OCR_MODEL,
   DEFAULT_OPENAI_MODEL,
+  OCR_MODES,
   OCR_MODELS,
   OPENAI_MODELS,
 } from "./constants.js";
@@ -104,6 +106,9 @@ export const getOcrModelFallbacks = (model) =>
 
 export const normalizeOcrModel = (model) =>
   OCR_MODELS.some((m) => m.key === model) ? model : DEFAULT_OCR_MODEL;
+
+export const normalizeOcrMode = (mode) =>
+  OCR_MODES.some((m) => m.key === mode) ? mode : DEFAULT_OCR_MODE;
 
 export const extractText = (res) => {
   for (const c of res.candidates ?? []) {

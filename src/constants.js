@@ -24,6 +24,7 @@ export const OPENAI_MODELS = [
 ];
 
 export const DEFAULT_OCR_MODEL = "gemini-2.5-flash";
+export const DEFAULT_OCR_MODE = "local-first";
 // Legacy storage keys keep existing Gemini OCR settings available after the ChatGPT split.
 export const OCR_SETTINGS_STORAGE_KEY = "aiSettings";
 export const OCR_API_KEY_SESSION_KEY = "aiApiKey";
@@ -33,6 +34,12 @@ export const OCR_MODELS = [
   { key: "gemini-2.5-flash",      label: "Gemini 2.5 Flash 추천" },
   { key: "gemini-2.5-flash-lite", label: "Gemini 2.5 Flash-Lite" },
   { key: "gemini-3.1-flash-lite", label: "Gemini 3.1 Flash-Lite" },
+];
+
+export const OCR_MODES = [
+  { key: "local-first", label: "기기 OCR 우선" },
+  { key: "local-only",  label: "기기 OCR만" },
+  { key: "cloud-only",  label: "Gemini만" },
 ];
 
 export const AI_CORRECTION_MODES = [
