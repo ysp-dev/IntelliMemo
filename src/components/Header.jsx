@@ -4,10 +4,12 @@ import {
   ListFilter,
   MessageSquareText,
   CheckCircle2,
+  Moon,
   Monitor,
   Search,
   Smartphone,
   Sparkles,
+  Sun,
   X,
 } from "lucide-react";
 import logoDark from "../assets/intelli-logo-dark.png?inline";
@@ -19,23 +21,35 @@ export function Header({
   actionFilter, setActionFilter,
   compact,
   layoutMode, onToggleLayout,
+  themeMode, onToggleTheme,
   searchOpen, onToggleSearch,
   searchQuery, setSearchQuery,
 }) {
   const isLandscape = layoutMode === "landscape";
+  const isDarkTheme = themeMode === "dark";
   const searchRef = useRef(null);
   return (
     <header className={`hdr${compact ? " compact" : ""}`}>
       <div className="hdr-body">
         <div className="hdr-top">
           <div className="brand">
-            <picture className="brand-logo-picture">
-              <source media="(prefers-color-scheme: dark)" srcSet={logoDark} />
-              <img className="brand-logo" src={logoLight} alt="Intelli Memo" />
-            </picture>
+            <img
+              className="brand-logo"
+              src={isDarkTheme ? logoDark : logoLight}
+              alt="Intelli Memo"
+            />
             <h1 className="sr-only">Intelli Memo</h1>
           </div>
           <div className="hdr-actions">
+            <button
+              type="button"
+              className={`layout-toggle-btn theme-toggle-btn ${isDarkTheme ? "theme-dark" : "theme-light"}`}
+              onClick={onToggleTheme}
+              aria-label={isDarkTheme ? "라이트 모드로 전환" : "다크 모드로 전환"}
+              title={isDarkTheme ? "라이트 모드" : "다크 모드"}
+            >
+              {isDarkTheme ? <Moon size={15} /> : <Sun size={15} />}
+            </button>
             <button
               type="button"
               className={`layout-toggle-btn${searchOpen ? " search-active" : ""}`}
@@ -56,7 +70,8 @@ export function Header({
             </button>
             <span className="ai-provider-badge">
               <Sparkles size={11} />
-              ChatGPT · Gemini
+              <span className="ai-provider-label">ChatGPT · Gemini</span>
+              <span className="ai-provider-short">AI</span>
             </span>
           </div>
         </div>

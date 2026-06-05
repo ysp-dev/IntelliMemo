@@ -41,6 +41,28 @@ import { CorrectionModal } from "./src/components/modals/CorrectionModal.jsx";
 
 const PULL_REFRESH_THRESHOLD = 72;
 const PULL_REFRESH_MAX = 98;
+const THEME_STORAGE_KEY = "intelliMemoTheme";
+
+const normalizeThemeMode = (mode) => mode === "dark" || mode === "light" ? mode : "light";
+
+const applyThemeMode = (mode) => {
+  if (typeof document === "undefined") return;
+  const theme = normalizeThemeMode(mode);
+  document.documentElement.dataset.theme = theme;
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute("content", theme === "dark" ? "#101015" : "#f0eeea");
+};
+
+const getInitialThemeMode = () => {
+  if (typeof window === "undefined") return "light";
+  try {
+    const saved = window.localStorage.getItem(THEME_STORAGE_KEY);
+    if (saved === "dark" || saved === "light") return saved;
+  } catch {
+    // Ignore storage access issues and fall back to the system preference.
+  }
+  return window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+};
 
 export default function IntelliMemoApp() {
   const [activeView,     setActiveView]     = useState("memos");
@@ -64,6 +86,11 @@ export default function IntelliMemoApp() {
   const [scrollTop,      setScrollTop]      = useState(0);
   const [pullDistance,   setPullDistance]   = useState(0);
   const [isRefreshing,   setIsRefreshing]   = useState(false);
+  const [themeMode,      setThemeMode]      = useState(() => {
+    const initialTheme = getInitialThemeMode();
+    applyThemeMode(initialTheme);
+    return initialTheme;
+  });
   const [tick,           setTick]           = useState(Date.now());
 
   const hasHydrated  = useRef(false);
@@ -134,6 +161,15 @@ export default function IntelliMemoApp() {
   useEffect(() => () => {
     if (refreshTimer.current) clearTimeout(refreshTimer.current);
   }, []);
+
+  useEffect(() => {
+    applyThemeMode(themeMode);
+    try {
+      window.localStorage.setItem(THEME_STORAGE_KEY, themeMode);
+    } catch {
+      // Theme still works for the current session even if storage is blocked.
+    }
+  }, [themeMode]);
 
   // ── Persist ──
   useEffect(() => { if (hasHydrated.current) saveJson("memos",   memos);   }, [memos]);
@@ -312,6 +348,10 @@ export default function IntelliMemoApp() {
     setPullDistance(0);
   }, [isRefreshing, startPullRefresh]);
 
+  const toggleThemeMode = useCallback(() => {
+    setThemeMode((mode) => mode === "dark" ? "light" : "dark");
+  }, []);
+
   const frameClass = `frame force-${layoutMode}`;
   const pullProgress = Math.min(1, pullDistance / PULL_REFRESH_THRESHOLD);
   const pullIndicatorVisible = pullDistance > 0 || isRefreshing;
@@ -340,6 +380,8 @@ export default function IntelliMemoApp() {
           compact={scrollTop > 20}
           layoutMode={layoutMode}
           onToggleLayout={() => setLayoutMode((m) => (m === "landscape" ? "portrait" : "landscape"))}
+          themeMode={themeMode}
+          onToggleTheme={toggleThemeMode}
           searchOpen={searchOpen}
           onToggleSearch={() => { if (searchOpen) { setSearchQuery(""); } setSearchOpen((o) => !o); }}
           searchQuery={searchQuery}
