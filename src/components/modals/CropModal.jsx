@@ -11,6 +11,29 @@ export function CropModal({ dataUrl, mimeType, onCrop, onCancel }) {
   const cropRef   = useRef(null);
   const dragRef   = useRef(null);
 
+  const getHandleScale = (canvas) => {
+    const rect = canvas.getBoundingClientRect();
+    return canvas.width / Math.max(rect.width, 1);
+  };
+
+  const setCanvasCursor = (type) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const cursor = {
+      move: "grab",
+      tl: "nwse-resize",
+      br: "nwse-resize",
+      tr: "nesw-resize",
+      bl: "nesw-resize",
+      top: "ns-resize",
+      bottom: "ns-resize",
+      left: "ew-resize",
+      right: "ew-resize",
+      grabbing: "grabbing",
+    }[type] ?? "crosshair";
+    canvas.style.cursor = cursor;
+  };
+
   const redraw = useCallback(() => {
     const canvas = canvasRef.current;
     const img    = imgRef.current;
@@ -23,19 +46,20 @@ export function CropModal({ dataUrl, mimeType, onCrop, onCancel }) {
     if (!c) return;
     const { x1, y1, x2, y2 } = c;
     const w = x2 - x1, h = y2 - y1;
+    const scale = getHandleScale(canvas);
+    const cornerLen = Math.max(22 * scale, Math.min(w, h, 150 * scale) * 0.2);
+    const edgeLen = Math.max(34 * scale, Math.min(w, h, 170 * scale) * 0.18);
+    const handleWidth = Math.max(3 * scale, Math.min(7 * scale, Math.min(w, h) * 0.012));
+    const dragging = Boolean(dragRef.current);
 
-    ctx.fillStyle = "rgba(0,0,0,0.52)";
+    ctx.fillStyle = dragging ? "rgba(0,0,0,0.58)" : "rgba(0,0,0,0.48)";
     ctx.fillRect(0, 0, canvas.width, y1);
     ctx.fillRect(0, y2, canvas.width, canvas.height - y2);
     ctx.fillRect(0, y1, x1, h);
     ctx.fillRect(x2, y1, canvas.width - x2, h);
 
-    ctx.strokeStyle = "rgba(255,255,255,0.9)";
-    ctx.lineWidth = 2;
-    ctx.strokeRect(x1 + 1, y1 + 1, w - 2, h - 2);
-
-    ctx.strokeStyle = "rgba(255,255,255,0.22)";
-    ctx.lineWidth = 1;
+    ctx.strokeStyle = dragging ? "rgba(255,255,255,0.38)" : "rgba(255,255,255,0.18)";
+    ctx.lineWidth = Math.max(1, scale);
     ctx.beginPath();
     ctx.moveTo(x1 + w / 3, y1); ctx.lineTo(x1 + w / 3, y2);
     ctx.moveTo(x1 + 2 * w / 3, y1); ctx.lineTo(x1 + 2 * w / 3, y2);
@@ -43,28 +67,39 @@ export function CropModal({ dataUrl, mimeType, onCrop, onCancel }) {
     ctx.moveTo(x1, y1 + 2 * h / 3); ctx.lineTo(x2, y1 + 2 * h / 3);
     ctx.stroke();
 
-    const ARM  = Math.min(w, h, 120) * 0.32;
-    const TICK = Math.max(2, ARM * 0.11);
-    ctx.fillStyle = "#fff";
-    ctx.shadowColor = "rgba(0,0,0,0.55)";
-    ctx.shadowBlur  = 8;
-    [
-      [x1, y1,  1,  1],
-      [x2, y1, -1,  1],
-      [x1, y2,  1, -1],
-      [x2, y2, -1, -1],
-    ].forEach(([cx, cy, sx, sy]) => {
-      ctx.fillRect(cx, cy, sx * ARM,  sy * TICK);
-      ctx.fillRect(cx, cy, sx * TICK, sy * ARM);
-    });
+    ctx.strokeStyle = "rgba(255,255,255,0.82)";
+    ctx.lineWidth = Math.max(1.2 * scale, handleWidth * 0.42);
+    ctx.strokeRect(x1, y1, w, h);
 
-    ctx.shadowBlur = 0;
-    ctx.fillStyle  = "#fff";
-    [[x1, y1], [x2, y1], [x1, y2], [x2, y2]].forEach(([cx, cy]) => {
+    ctx.save();
+    ctx.strokeStyle = "#fff";
+    ctx.lineWidth = handleWidth;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.shadowColor = "rgba(0,0,0,0.55)";
+    ctx.shadowBlur  = 10 * scale;
+    const drawLine = (xa, ya, xb, yb) => {
       ctx.beginPath();
-      ctx.arc(cx, cy, 5, 0, Math.PI * 2);
-      ctx.fill();
-    });
+      ctx.moveTo(xa, ya);
+      ctx.lineTo(xb, yb);
+      ctx.stroke();
+    };
+    drawLine(x1, y1, x1 + cornerLen, y1);
+    drawLine(x1, y1, x1, y1 + cornerLen);
+    drawLine(x2, y1, x2 - cornerLen, y1);
+    drawLine(x2, y1, x2, y1 + cornerLen);
+    drawLine(x1, y2, x1 + cornerLen, y2);
+    drawLine(x1, y2, x1, y2 - cornerLen);
+    drawLine(x2, y2, x2 - cornerLen, y2);
+    drawLine(x2, y2, x2, y2 - cornerLen);
+
+    const midX = x1 + w / 2;
+    const midY = y1 + h / 2;
+    drawLine(midX - edgeLen / 2, y1, midX + edgeLen / 2, y1);
+    drawLine(midX - edgeLen / 2, y2, midX + edgeLen / 2, y2);
+    drawLine(x1, midY - edgeLen / 2, x1, midY + edgeLen / 2);
+    drawLine(x2, midY - edgeLen / 2, x2, midY + edgeLen / 2);
+    ctx.restore();
   }, []);
 
   const initCrop = useCallback(() => {
@@ -94,8 +129,8 @@ export function CropModal({ dataUrl, mimeType, onCrop, onCancel }) {
     const rect   = canvas.getBoundingClientRect();
     const src    = e.touches ? e.touches[0] : e;
     return {
-      x: (src.clientX - rect.left) * (canvas.width  / rect.width),
-      y: (src.clientY - rect.top)  * (canvas.height / rect.height),
+      x: (src.clientX - rect.left) * (canvas.width  / Math.max(rect.width, 1)),
+      y: (src.clientY - rect.top)  * (canvas.height / Math.max(rect.height, 1)),
     };
   };
 
@@ -103,14 +138,18 @@ export function CropModal({ dataUrl, mimeType, onCrop, onCancel }) {
     const c = cropRef.current;
     if (!c) return null;
     const canvas = canvasRef.current;
-    const rect   = canvas.getBoundingClientRect();
-    const R = 28 * (canvas.width / rect.width);
+    if (!canvas) return null;
+    const R = 30 * getHandleScale(canvas);
     const { x1, y1, x2, y2 } = c;
     for (const [name, cx, cy] of [
       ["tl", x1, y1], ["tr", x2, y1], ["bl", x1, y2], ["br", x2, y2],
     ]) {
       if ((p.x - cx) ** 2 + (p.y - cy) ** 2 <= R ** 2) return name;
     }
+    if (p.x >= x1 - R && p.x <= x2 + R && Math.abs(p.y - y1) <= R) return "top";
+    if (p.x >= x1 - R && p.x <= x2 + R && Math.abs(p.y - y2) <= R) return "bottom";
+    if (p.y >= y1 - R && p.y <= y2 + R && Math.abs(p.x - x1) <= R) return "left";
+    if (p.y >= y1 - R && p.y <= y2 + R && Math.abs(p.x - x2) <= R) return "right";
     if (p.x > x1 && p.x < x2 && p.y > y1 && p.y < y2) return "move";
     return null;
   };
@@ -121,11 +160,17 @@ export function CropModal({ dataUrl, mimeType, onCrop, onCancel }) {
     const hit = hitTest(p);
     if (hit) {
       dragRef.current = { type: hit, startX: p.x, startY: p.y, startCrop: { ...cropRef.current } };
+      try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch {}
+      setCanvasCursor(hit === "move" ? "grabbing" : hit);
+      redraw();
     }
   };
 
   const onMove = (e) => {
-    if (!dragRef.current) return;
+    if (!dragRef.current) {
+      setCanvasCursor(hitTest(toCanvas(e)));
+      return;
+    }
     e.preventDefault();
     const p  = toCanvas(e);
     const { type, startX, startY, startCrop: sc } = dragRef.current;
@@ -140,10 +185,10 @@ export function CropModal({ dataUrl, mimeType, onCrop, onCancel }) {
       y1 = Math.max(0, Math.min(canvas.height - h, sc.y1 + dy));
       x2 = x1 + w; y2 = y1 + h;
     } else {
-      if (type === "tl" || type === "bl") x1 = Math.max(0,             Math.min(sc.x2 - MIN, sc.x1 + dx));
-      if (type === "tr" || type === "br") x2 = Math.min(canvas.width,  Math.max(sc.x1 + MIN, sc.x2 + dx));
-      if (type === "tl" || type === "tr") y1 = Math.max(0,             Math.min(sc.y2 - MIN, sc.y1 + dy));
-      if (type === "bl" || type === "br") y2 = Math.min(canvas.height, Math.max(sc.y1 + MIN, sc.y2 + dy));
+      if (["tl", "bl", "left"].includes(type)) x1 = Math.max(0, Math.min(sc.x2 - MIN, sc.x1 + dx));
+      if (["tr", "br", "right"].includes(type)) x2 = Math.min(canvas.width, Math.max(sc.x1 + MIN, sc.x2 + dx));
+      if (["tl", "tr", "top"].includes(type)) y1 = Math.max(0, Math.min(sc.y2 - MIN, sc.y1 + dy));
+      if (["bl", "br", "bottom"].includes(type)) y2 = Math.min(canvas.height, Math.max(sc.y1 + MIN, sc.y2 + dy));
     }
 
     cropRef.current = { x1, y1, x2, y2 };
@@ -153,6 +198,11 @@ export function CropModal({ dataUrl, mimeType, onCrop, onCancel }) {
   const onUp = (e) => {
     e.preventDefault();
     dragRef.current = null;
+    try {
+      if (e.currentTarget.hasPointerCapture?.(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {}
+    setCanvasCursor(hitTest(toCanvas(e)));
+    redraw();
   };
 
   const getCroppedCanvas = () => {
@@ -210,7 +260,7 @@ export function CropModal({ dataUrl, mimeType, onCrop, onCancel }) {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="crop-modal-hdr">
-          <h2>텍스트 영역 선택 <span>꼭지점·내부 드래그로 조정</span></h2>
+          <h2>텍스트 영역 선택 <span>모서리·변·내부를 드래그</span></h2>
           <button type="button" className="crop-close-btn" aria-label="닫기" onClick={onCancel}>
             <X size={14} />
           </button>
@@ -219,8 +269,13 @@ export function CropModal({ dataUrl, mimeType, onCrop, onCancel }) {
           <canvas
             ref={canvasRef}
             className="crop-canvas"
-            onMouseDown={onDown} onMouseMove={onMove} onMouseUp={onUp} onMouseLeave={onUp}
-            onTouchStart={onDown} onTouchMove={onMove} onTouchEnd={onUp}
+            onPointerDown={onDown}
+            onPointerMove={onMove}
+            onPointerUp={onUp}
+            onPointerCancel={onUp}
+            onPointerLeave={() => {
+              if (!dragRef.current) setCanvasCursor(null);
+            }}
           />
         </div>
         <div className="crop-modal-footer">
