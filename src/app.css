@@ -374,7 +374,6 @@ textarea { resize: none; }
   flex-shrink: 0;
 }
 .layout-toggle-btn:hover { background: rgba(0,0,0,0.09); color: var(--t1); }
-.layout-toggle-btn.reload-btn { color: var(--t3); }
 .layout-toggle-btn.search-active { background: rgba(0,0,0,0.09); color: var(--t1); }
 
 .search-bar-wrap { overflow: hidden; }

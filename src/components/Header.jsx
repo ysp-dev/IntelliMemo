@@ -5,7 +5,6 @@ import {
   MessageSquareText,
   CheckCircle2,
   Monitor,
-  RotateCcw,
   Search,
   Smartphone,
   Sparkles,
@@ -48,15 +47,6 @@ export function Header({
               title={isLandscape ? "세로 모드" : "가로 모드"}
             >
               {isLandscape ? <Smartphone size={15} /> : <Monitor size={15} />}
-            </button>
-            <button
-              type="button"
-              className="layout-toggle-btn reload-btn"
-              onClick={() => window.location.reload()}
-              aria-label="새로고침"
-              title="새로고침"
-            >
-              <RotateCcw size={13} />
             </button>
             <span className="ai-provider-badge">
               <Sparkles size={11} />
