@@ -45,6 +45,18 @@ const THEME_STORAGE_KEY = "intelliMemoTheme";
 
 const normalizeThemeMode = (mode) => mode === "dark" || mode === "light" ? mode : "light";
 
+const getDragPoint = (event) => {
+  const touch = event.touches?.[0] ?? event.changedTouches?.[0];
+  if (touch) return { x: touch.clientX, y: touch.clientY };
+  if (typeof event.clientX === "number") return { x: event.clientX, y: event.clientY };
+  return null;
+};
+
+const shouldIgnorePullTarget = (target) => {
+  if (typeof Element === "undefined" || !(target instanceof Element)) return false;
+  return Boolean(target.closest("button,input,textarea,select,a,[role='button'],[contenteditable='true']"));
+};
+
 const applyThemeMode = (mode) => {
   if (typeof document === "undefined") return;
   const theme = normalizeThemeMode(mode);
@@ -96,6 +108,7 @@ export default function IntelliMemoApp() {
   const hasHydrated  = useRef(false);
   const toastTimer   = useRef(null);
   const scrollRafRef = useRef(null);
+  const stageRef = useRef(null);
   const pullStartRef = useRef(null);
   const pullDistanceRef = useRef(0);
   const refreshTimer = useRef(null);
@@ -301,26 +314,27 @@ export default function IntelliMemoApp() {
   }, [isRefreshing]);
 
   const handlePullStart = useCallback((e) => {
-    if (isRefreshing || e.currentTarget.scrollTop > 0) return;
-    const touch = e.touches?.[0];
-    if (!touch) return;
-    pullStartRef.current = { x: touch.clientX, y: touch.clientY };
+    if (e.type === "mousedown" && e.button !== 0) return;
+    if (isRefreshing || (stageRef.current?.scrollTop ?? 0) > 0 || shouldIgnorePullTarget(e.target)) return;
+    const point = getDragPoint(e);
+    if (!point) return;
+    pullStartRef.current = point;
   }, [isRefreshing]);
 
   const handlePullMove = useCallback((e) => {
     const start = pullStartRef.current;
-    const touch = e.touches?.[0];
-    if (!start || !touch || isRefreshing) return;
+    const point = getDragPoint(e);
+    if (!start || !point || isRefreshing) return;
 
-    if (e.currentTarget.scrollTop > 0) {
+    if ((stageRef.current?.scrollTop ?? 0) > 0) {
       pullStartRef.current = null;
       pullDistanceRef.current = 0;
       setPullDistance(0);
       return;
     }
 
-    const deltaY = touch.clientY - start.y;
-    const deltaX = Math.abs(touch.clientX - start.x);
+    const deltaY = point.y - start.y;
+    const deltaX = Math.abs(point.x - start.x);
     if (deltaY <= 0) {
       pullDistanceRef.current = 0;
       setPullDistance(0);
@@ -330,7 +344,7 @@ export default function IntelliMemoApp() {
 
     const nextDistance = Math.min(PULL_REFRESH_MAX, deltaY * 0.46);
     if (nextDistance > 4) {
-      e.preventDefault();
+      if (e.cancelable) e.preventDefault();
       pullDistanceRef.current = nextDistance;
       setPullDistance(nextDistance);
     }
@@ -363,7 +377,17 @@ export default function IntelliMemoApp() {
 
   return (
     <main className="app">
-      <div className={frameClass}>
+      <div
+        className={frameClass}
+        onMouseDown={handlePullStart}
+        onMouseMove={handlePullMove}
+        onMouseUp={handlePullEnd}
+        onMouseLeave={handlePullEnd}
+        onTouchStart={handlePullStart}
+        onTouchMove={handlePullMove}
+        onTouchEnd={handlePullEnd}
+        onTouchCancel={handlePullEnd}
+      >
         <div
           className={`pull-refresh-indicator${isRefreshing ? " refreshing" : ""}${pullDistance >= PULL_REFRESH_THRESHOLD ? " armed" : ""}`}
           style={pullIndicatorStyle}
@@ -412,12 +436,9 @@ export default function IntelliMemoApp() {
         />
 
         <section
+          ref={stageRef}
           className="stage"
           onScroll={handleScroll}
-          onTouchStart={handlePullStart}
-          onTouchMove={handlePullMove}
-          onTouchEnd={handlePullEnd}
-          onTouchCancel={handlePullEnd}
         >
           <AnimatePresence mode="wait" initial={false}>
             {activeView === "memos" ? (
