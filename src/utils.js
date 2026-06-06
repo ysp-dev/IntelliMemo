@@ -2,7 +2,6 @@ import {
   DEFAULT_OCR_MODE,
   DEFAULT_OCR_MODEL,
   DEFAULT_OPENAI_MODEL,
-  OCR_MODES,
   OCR_MODELS,
   OPENAI_MODELS,
 } from "./constants.js";
@@ -108,9 +107,8 @@ export const normalizeOcrModel = (model) =>
   OCR_MODELS.some((m) => m.key === model) ? model : DEFAULT_OCR_MODEL;
 
 export const normalizeOcrMode = (mode) => {
-  if (mode === "local-first" || mode === "local-only") return "vision";
   if (mode === "cloud-only") return "ai-model";
-  return OCR_MODES.some((m) => m.key === mode) ? mode : DEFAULT_OCR_MODE;
+  return mode === "ai-model" ? mode : DEFAULT_OCR_MODE;
 };
 
 export const extractText = (res) => {

@@ -36,11 +36,6 @@ export const OCR_MODELS = [
   { key: "gemini-3.1-flash-lite", label: "Gemini 3.1 Flash-Lite" },
 ];
 
-export const OCR_MODES = [
-  { key: "vision",   label: "Vision OCR" },
-  { key: "ai-model", label: "AI 모델" },
-];
-
 export const AI_CORRECTION_MODES = [
   {
     key:   "typo",

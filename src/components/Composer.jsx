@@ -17,16 +17,13 @@ import {
   AI_CORRECTION_GROUPS,
   AI_CORRECTION_MODES,
   DEFAULT_AI_CORRECTION_MODE,
-  DEFAULT_OCR_MODE,
   DEFAULT_OCR_MODEL,
-  OCR_MODES,
   OCR_MODELS,
   OPENAI_MODELS,
   TAGS,
 } from "../constants.js";
-import { copyToClipboard, getOcrModelFallbacks, normalizeOcrMode, normalizeOcrModel } from "../utils.js";
+import { copyToClipboard, getOcrModelFallbacks, normalizeOcrModel } from "../utils.js";
 import { extractTextFromImage } from "../api.js";
-import { extractTextWithLocalOcr } from "../localOcr.js";
 import { useAutoResize } from "../hooks/useAutoResize.js";
 import { CropModal } from "./modals/CropModal.jsx";
 
@@ -60,9 +57,7 @@ export function Composer({
   const [copyState, setCopyState] = useState("idle");
 
   const correcting = aiStatus.state === "loading";
-  const ocrMode = normalizeOcrMode(ocrSettings.mode ?? DEFAULT_OCR_MODE);
-  const isAiOcr = ocrMode === "ai-model";
-  const isOcrBusy = ocrState === "local-scanning" || ocrState === "cloud-scanning";
+  const isOcrBusy = ocrState === "cloud-scanning";
   const settleCopyState = (state) => {
     setCopyState(state);
     setTimeout(() => setCopyState("idle"), 1500);
@@ -113,15 +108,6 @@ export function Composer({
     onOcrError({ model, message, type: "ocr" });
   };
 
-  const localOcrErrorMessage = (err) => {
-    const msg = err instanceof Error ? err.message : "";
-    const normalized = msg.toLowerCase();
-    if (normalized.includes("failed to fetch") || normalized.includes("network")) {
-      return "Vision OCR 엔진 또는 언어 데이터를 불러오지 못했습니다.";
-    }
-    return "Vision OCR 처리 실패";
-  };
-
   const runGeminiOcr = async (base64, mimeType) => {
     setOcrState("cloud-scanning");
     const fallbacks = getOcrModelFallbacks(normalizeOcrModel(ocrSettings.model));
@@ -167,27 +153,9 @@ export function Composer({
   const handleCropConfirm = async (base64, mimeType) => {
     setCropData(null);
 
-    if (!isAiOcr) {
-      setOcrState("local-scanning");
-      try {
-        const extracted = await extractTextWithLocalOcr({
-          image: `data:${mimeType};base64,${base64}`,
-        });
-        if (extracted.trim()) {
-          appendExtractedText(extracted);
-          return;
-        }
-      } catch (err) {
-        settleOcrError("Vision OCR", localOcrErrorMessage(err));
-        return;
-      }
-      settleOcrError("Vision OCR", "Vision OCR에서 텍스트를 찾을 수 없습니다.");
-      return;
-    }
-
     if (!ocrSettings.apiKey) {
       setAiOpen(true);
-      settleOcrError("AI OCR", "AI 모델 OCR에는 Gemini API 키가 필요합니다.");
+      settleOcrError("Gemini OCR", "Gemini OCR 키가 필요합니다.");
       return;
     }
 
@@ -196,8 +164,7 @@ export function Composer({
 
   const draftText = activeView === "memos" ? memoText : actionText;
   const hasText   = draftText.trim().length > 0;
-  const ocrHint = ocrState === "local-scanning" ? "Vision OCR 처리 중…"
-    : ocrState === "cloud-scanning" ? "AI 모델로 텍스트 추출 중…"
+  const ocrHint = ocrState === "cloud-scanning" ? "Gemini 모델로 텍스트 추출 중…"
     : ocrState === "error" ? "텍스트를 찾을 수 없음"
     : memoText.length > 0 ? `${memoText.length}자 · ⌘↵ 저장`
     : "⌘↵ 저장";
@@ -584,33 +551,21 @@ export function Composer({
               </select>
             </label>
             <label className="ai-panel-field">
-              <span>AI OCR 키</span>
+              <span>Gemini OCR 키</span>
               <input
                 type="password"
                 value={ocrSettings.apiKey}
                 onChange={(e) => setOcrSettings((s) => ({ ...s, apiKey: e.target.value.trim() }))}
                 placeholder="Gemini API key"
-                aria-label="AI OCR API key"
+                aria-label="Gemini OCR API key"
               />
             </label>
             <label className="ai-panel-field">
-              <span>OCR 엔진</span>
-              <select
-                value={ocrMode}
-                onChange={(e) => setOcrSettings((s) => ({ ...s, mode: e.target.value }))}
-                aria-label="OCR 엔진"
-              >
-                {OCR_MODES.map((m) => (
-                  <option key={m.key} value={m.key}>{m.label}</option>
-                ))}
-              </select>
-            </label>
-            <label className="ai-panel-field">
-              <span>AI OCR 모델</span>
+              <span>Gemini OCR 모델</span>
               <select
                 value={ocrSettings.model}
                 onChange={(e) => setOcrSettings((s) => ({ ...s, model: e.target.value }))}
-                aria-label="AI OCR 모델"
+                aria-label="Gemini OCR 모델"
               >
                 {OCR_MODELS.map((m) => (
                   <option key={m.key} value={m.key}>{m.label}</option>
