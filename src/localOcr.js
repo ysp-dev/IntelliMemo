@@ -14,7 +14,7 @@ const cleanOcrText = (text) =>
 const getLocalOcrWorker = () => {
   if (!localWorkerPromise) {
     localWorkerPromise = createWorker(LOCAL_OCR_LANGS, 1, {
-      cachePath: "intelli-memo-ocr",
+      cachePath: "intellimemo-ocr",
     }).then(async (worker) => {
       await worker.setParameters({
         tessedit_pageseg_mode: PSM.AUTO,

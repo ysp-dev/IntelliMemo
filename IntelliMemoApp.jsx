@@ -41,7 +41,7 @@ import { CorrectionModal } from "./src/components/modals/CorrectionModal.jsx";
 
 const PULL_REFRESH_THRESHOLD = 72;
 const PULL_REFRESH_MAX = 98;
-const THEME_STORAGE_KEY = "intelliMemoTheme";
+const THEME_STORAGE_KEY = "intellimemoTheme";
 
 const normalizeThemeMode = (mode) => mode === "dark" || mode === "light" ? mode : "light";
 

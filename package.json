@@ -1,5 +1,5 @@
 {
-  "name": "intelli-memo",
+  "name": "intellimemo",
   "scripts": {
     "build": "node scripts/build-standalone.mjs"
   },

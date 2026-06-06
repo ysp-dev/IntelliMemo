@@ -12,8 +12,8 @@ import {
   Sun,
   X,
 } from "lucide-react";
-import logoDark from "../assets/intelli-logo-dark.png?inline";
-import logoLight from "../assets/intelli-logo-light.png?inline";
+import logoDark from "../assets/intellimemo-logo-dark.png?inline";
+import logoLight from "../assets/intellimemo-logo-light.png?inline";
 import { ACTION_FILTERS } from "../constants.js";
 
 export function Header({
@@ -36,9 +36,9 @@ export function Header({
             <img
               className="brand-logo"
               src={isDarkTheme ? logoDark : logoLight}
-              alt="Intelli Memo"
+              alt="IntelliMemo"
             />
-            <h1 className="sr-only">Intelli Memo</h1>
+            <h1 className="sr-only">IntelliMemo</h1>
           </div>
           <div className="hdr-actions">
             <button

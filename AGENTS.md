@@ -1,4 +1,4 @@
-# intelli-memo
+# IntelliMemo
 
 ## 필수 규칙
 
