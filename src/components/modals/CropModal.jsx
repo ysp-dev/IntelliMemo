@@ -14,7 +14,7 @@ export function CropModal({ dataUrl, mimeType, onCrop, onCancel, onError }) {
   const onErrorRef = useRef(onError);
   const dragRef   = useRef(null);
   const pinchRef  = useRef(null);
-  const justDraggedRef = useRef(false);
+  const lastDragEndTimeRef = useRef(0);
   const pointersRef = useRef(new Map());
   const redrawFrameRef = useRef(null);
   const saveTimerRef = useRef(null);
@@ -355,7 +355,7 @@ export function CropModal({ dataUrl, mimeType, onCrop, onCancel, onError }) {
 
   const onUp = (e) => {
     e.preventDefault();
-    if (dragRef.current) justDraggedRef.current = true;
+    if (dragRef.current) lastDragEndTimeRef.current = Date.now();
     pointersRef.current.delete(e.pointerId);
     dragRef.current = null;
     if (pointersRef.current.size < 2) pinchRef.current = null;
@@ -451,7 +451,7 @@ export function CropModal({ dataUrl, mimeType, onCrop, onCancel, onError }) {
       initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
       transition={{ duration: 0.18 }}
       onClick={() => {
-        if (justDraggedRef.current) { justDraggedRef.current = false; return; }
+        if (Date.now() - lastDragEndTimeRef.current < 400) return;
         onCancel();
       }}
     >
