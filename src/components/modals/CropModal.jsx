@@ -450,6 +450,12 @@ export function CropModal({ dataUrl, mimeType, onCrop, onCancel, onError }) {
       className="crop-overlay"
       initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
       transition={{ duration: 0.18 }}
+      onTouchStart={(e) => e.stopPropagation()}
+      onTouchMove={(e) => e.stopPropagation()}
+      onTouchEnd={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
+      onMouseMove={(e) => e.stopPropagation()}
+      onMouseUp={(e) => e.stopPropagation()}
       onClick={() => {
         if (Date.now() - lastDragEndTimeRef.current < 400) return;
         onCancel();
