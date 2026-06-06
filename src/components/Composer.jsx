@@ -27,6 +27,9 @@ import { extractTextFromImage } from "../api.js";
 import { useAutoResize } from "../hooks/useAutoResize.js";
 import { CropModal } from "./modals/CropModal.jsx";
 
+const MAX_IMAGE_BYTES = 16 * 1024 * 1024;
+const SUPPORTED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif", "image/heic", "image/heif"]);
+
 export function Composer({
   activeView,
   memoText, setMemoText,
@@ -73,11 +76,22 @@ export function Composer({
 
   const handleImageFile = (file) => {
     if (!file) return;
+    if (!SUPPORTED_IMAGE_TYPES.has(file.type)) {
+      settleOcrError("이미지", "JPG, PNG, WEBP, GIF, HEIC 이미지만 가져올 수 있습니다.");
+      return;
+    }
+    if (file.size > MAX_IMAGE_BYTES) {
+      settleOcrError("이미지", "이미지가 너무 큽니다. 16MB 이하 이미지를 선택하세요.");
+      return;
+    }
     const reader = new FileReader();
     reader.onload = () => {
       if (typeof reader.result === "string") {
         setCropData({ dataUrl: reader.result, mimeType: file.type || "image/jpeg" });
       }
+    };
+    reader.onerror = () => {
+      settleOcrError("이미지", "이미지를 불러오지 못했습니다.");
     };
     reader.readAsDataURL(file);
   };
@@ -512,6 +526,7 @@ export function Composer({
               dataUrl={cropData.dataUrl}
               mimeType={cropData.mimeType}
               onCrop={handleCropConfirm}
+              onError={(message) => settleOcrError("이미지", message)}
               onCancel={() => setCropData(null)}
             />
           )}

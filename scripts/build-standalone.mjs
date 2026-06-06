@@ -28,6 +28,7 @@ try {
       rollupOptions: {
         input: join(root, "src/main.jsx"),
         output: {
+          codeSplitting: false,
           entryFileNames: "assets/app.js",
           chunkFileNames: "assets/[name].js",
           assetFileNames: "assets/[name][extname]",

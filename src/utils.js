@@ -24,9 +24,12 @@ export const loadJson = async (key, fallback) => {
 
 export const saveJson = async (key, value) => {
   try {
-    if (!window.storage?.set) return;
+    if (!window.storage?.set) throw new Error("저장소를 사용할 수 없습니다.");
     await window.storage.set(key, JSON.stringify(value));
-  } catch {}
+    return true;
+  } catch (err) {
+    throw err instanceof Error ? err : new Error("저장에 실패했습니다.");
+  }
 };
 
 export const loadSessionValue = (key) => {

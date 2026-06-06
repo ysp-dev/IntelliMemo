@@ -14,7 +14,7 @@ import {
 } from "../utils.js";
 import { correctKorean } from "../api.js";
 
-export function useAiCorrection({ memoText, actionText, setMemoText, setActionText, hasHydrated }) {
+export function useAiCorrection({ memoText, actionText, hasHydrated }) {
   const [aiSettings,        setAiSettings]       = useState({ apiKey: "", model: DEFAULT_OPENAI_MODEL });
   const [aiStatus,          setAiStatus]         = useState({ state: "idle", message: `ChatGPT · ${DEFAULT_OPENAI_MODEL}` });
   const [aiError,           setAiError]          = useState(null);
@@ -37,7 +37,8 @@ export function useAiCorrection({ memoText, actionText, setMemoText, setActionTe
 
   useEffect(() => {
     if (!hasHydrated.current) return;
-    saveJson(OPENAI_SETTINGS_STORAGE_KEY, { model: normalizeOpenAiModel(aiSettings.model) });
+    saveJson(OPENAI_SETTINGS_STORAGE_KEY, { model: normalizeOpenAiModel(aiSettings.model) })
+      .catch((err) => console.error(err));
     saveSessionValue(OPENAI_API_KEY_SESSION_KEY, aiSettings.apiKey);
   }, [aiSettings]);
 
@@ -71,14 +72,8 @@ export function useAiCorrection({ memoText, actionText, setMemoText, setActionTe
       try {
         const corrected = await correctKorean({ apiKey: aiSettings.apiKey, model, text, mode });
         setAiSettings((s) => s.model === model ? s : { ...s, model });
-        if (modeConfig.modal && type === "memos") {
-          setPendingCorrection({ original: text, corrected, mode: modeConfig.key });
-          setAiStatus({ state: "success", message: `${modeConfig.label} 제안 준비됨 ✓` });
-        } else {
-          if (type === "memos") setMemoText(corrected);
-          else setActionText(corrected);
-          setAiStatus({ state: "success", message: "교정 완료 ✓" });
-        }
+        setPendingCorrection({ type, original: text, corrected, mode: modeConfig.key });
+        setAiStatus({ state: "success", message: `${modeConfig.label} 제안 준비됨 ✓` });
         idleTimerRef.current = setTimeout(() => setAiStatus({ state: "idle", message: `ChatGPT · ${model}` }), 2500);
         return;
       } catch (err) {
@@ -109,7 +104,7 @@ export function useAiCorrection({ memoText, actionText, setMemoText, setActionTe
     const message = lastError instanceof Error ? lastError.message : "교정 실패";
     setAiStatus({ state: "error", message });
     setAiError({ model: lastModel, message, type: "correction" });
-  }, [memoText, actionText, aiSettings, setMemoText, setActionText]);
+  }, [memoText, actionText, aiSettings]);
 
   return {
     aiSettings, setAiSettings,

@@ -123,6 +123,18 @@ export default function IntelliMemoApp() {
     correctDraft,
   } = useAiCorrection({ memoText, actionText, setMemoText, setActionText, hasHydrated });
 
+  // ── Toast helper ──
+  const showToast = useCallback((msg, undoFn = null) => {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    setToast({ msg, undo: undoFn });
+    toastTimer.current = setTimeout(() => setToast(null), UNDO_DELAY_MS);
+  }, []);
+
+  const handlePersistError = useCallback((err) => {
+    console.error(err);
+    showToast("저장에 실패했습니다. 새로고침 전 내용을 확인하세요.");
+  }, [showToast]);
+
   // ── Hydrate ──
   useEffect(() => {
     let alive = true;
@@ -185,23 +197,20 @@ export default function IntelliMemoApp() {
   }, [themeMode]);
 
   // ── Persist ──
-  useEffect(() => { if (hasHydrated.current) saveJson("memos",   memos);   }, [memos]);
-  useEffect(() => { if (hasHydrated.current) saveJson("actions", actions); }, [actions]);
+  useEffect(() => {
+    if (hasHydrated.current) saveJson("memos", memos).catch(handlePersistError);
+  }, [memos, handlePersistError]);
+  useEffect(() => {
+    if (hasHydrated.current) saveJson("actions", actions).catch(handlePersistError);
+  }, [actions, handlePersistError]);
   useEffect(() => {
     if (!hasHydrated.current) return;
     saveJson(OCR_SETTINGS_STORAGE_KEY, {
       model: normalizeOcrModel(ocrSettings.model),
       mode: normalizeOcrMode(ocrSettings.mode),
-    });
+    }).catch(handlePersistError);
     saveSessionValue(OCR_API_KEY_SESSION_KEY, ocrSettings.apiKey);
-  }, [ocrSettings]);
-
-  // ── Toast helper ──
-  const showToast = useCallback((msg, undoFn) => {
-    if (toastTimer.current) clearTimeout(toastTimer.current);
-    setToast({ msg, undo: undoFn });
-    toastTimer.current = setTimeout(() => setToast(null), UNDO_DELAY_MS);
-  }, []);
+  }, [ocrSettings, handlePersistError]);
 
   // ── Derived ──
   const filteredActions = useMemo(() => {
@@ -552,7 +561,7 @@ export default function IntelliMemoApp() {
           <UndoToast
             key="undo-toast"
             msg={toast.msg}
-            onUndo={() => { toast.undo(); setToast(null); }}
+            onUndo={toast.undo ? () => { toast.undo(); setToast(null); } : null}
           />
         )}
       </AnimatePresence>
@@ -576,7 +585,14 @@ export default function IntelliMemoApp() {
             title={pendingCorrection.mode === "translate" ? "번역 제안" : "문장 교정 제안"}
             correctedLabel={pendingCorrection.mode === "translate" ? "번역" : "교정 제안"}
             onApply={() => {
-              setMemoText(pendingCorrection.corrected);
+              const current = pendingCorrection.type === "memos" ? memoText.trim() : actionText.trim();
+              if (current !== pendingCorrection.original) {
+                setPendingCorrection(null);
+                showToast("입력 내용이 바뀌어 교정을 적용하지 않았습니다.");
+                return;
+              }
+              if (pendingCorrection.type === "memos") setMemoText(pendingCorrection.corrected);
+              else setActionText(pendingCorrection.corrected);
               setPendingCorrection(null);
             }}
             onCancel={() => setPendingCorrection(null)}

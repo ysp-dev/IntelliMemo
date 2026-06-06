@@ -3,7 +3,7 @@ import { motion } from "framer-motion";
 import { X } from "lucide-react";
 import { useFocusTrap } from "../../hooks/useFocusTrap.js";
 
-export function CropModal({ dataUrl, mimeType, onCrop, onCancel }) {
+export function CropModal({ dataUrl, mimeType, onCrop, onCancel, onError }) {
   const modalRef  = useRef(null);
   useFocusTrap(modalRef);
   const canvasRef = useRef(null);
@@ -168,8 +168,12 @@ export function CropModal({ dataUrl, mimeType, onCrop, onCancel }) {
       canvas.height = Math.round(img.naturalHeight * scale);
       initCrop();
     };
+    img.onerror = () => {
+      onError?.("이미지를 불러오지 못했습니다.");
+      onCancel();
+    };
     img.src = dataUrl;
-  }, [dataUrl, initCrop]);
+  }, [dataUrl, initCrop, onCancel, onError]);
 
   useEffect(() => () => {
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);

@@ -11,10 +11,12 @@ export function UndoToast({ msg, onUndo }) {
       transition={{ type: "spring", stiffness: 380, damping: 32 }}
     >
       <span className="toast-msg">{msg}</span>
-      <button type="button" className="toast-undo" onClick={onUndo}>
-        <RotateCcw size={12} />
-        되돌리기
-      </button>
+      {onUndo && (
+        <button type="button" className="toast-undo" onClick={onUndo}>
+          <RotateCcw size={12} />
+          되돌리기
+        </button>
+      )}
     </motion.div>
   );
 }
