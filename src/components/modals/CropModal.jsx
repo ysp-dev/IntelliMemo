@@ -182,7 +182,9 @@ export function CropModal({ dataUrl, mimeType, onCrop, onCancel, onError }) {
 
   useEffect(() => {
     const img = new Image();
+    let cancelled = false;
     img.onload = () => {
+      if (cancelled) return;
       imgRef.current = img;
       const canvas = canvasRef.current;
       if (!canvas) return;
@@ -192,10 +194,18 @@ export function CropModal({ dataUrl, mimeType, onCrop, onCancel, onError }) {
       initCrop();
     };
     img.onerror = () => {
+      if (cancelled) return;
       onErrorRef.current?.("이미지를 불러오지 못했습니다.");
       onCancelRef.current();
     };
     img.src = dataUrl;
+    // dataUrl 교체·언마운트 시 이전 Image 의 콜백이 늦게 살아나 새 모달을
+    // 닫지 않도록 무력화한다.
+    return () => {
+      cancelled = true;
+      img.onload = null;
+      img.onerror = null;
+    };
   }, [dataUrl, initCrop]);
 
   useEffect(() => () => {
@@ -452,7 +462,13 @@ export function CropModal({ dataUrl, mimeType, onCrop, onCancel, onError }) {
     setSavePreview({ dataUrl, status: "saving", message: "저장 준비 중" });
 
     try {
-      const blob = await fetch(dataUrl).then((r) => r.blob());
+      const blob = await new Promise((resolve, reject) => {
+        out.toBlob(
+          (b) => (b ? resolve(b) : reject(new Error("이미지를 처리하지 못했습니다."))),
+          outMime,
+          outMime === "image/jpeg" ? 0.92 : undefined,
+        );
+      });
       const file = new File([blob], `memo-${savedAt}.${ext}`, { type: outMime });
       if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
         await navigator.share({ files: [file], title: "메모 이미지" });
@@ -504,6 +520,8 @@ export function CropModal({ dataUrl, mimeType, onCrop, onCancel, onError }) {
           <canvas
             ref={canvasRef}
             className="crop-canvas"
+            role="application"
+            aria-label="크롭 영역 선택. 모서리·변을 드래그해 조절하고, 드래그·핀치·휠로 사진을 맞춥니다."
             onPointerDown={onDown}
             onPointerMove={onMove}
             onPointerUp={onUp}
