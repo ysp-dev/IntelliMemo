@@ -14,7 +14,7 @@ export function CropModal({ dataUrl, mimeType, onCrop, onCancel, onError }) {
   const onErrorRef = useRef(onError);
   const dragRef   = useRef(null);
   const pinchRef  = useRef(null);
-  const lastDragEndTimeRef = useRef(0);
+  const draggedRef = useRef(false);
   const pointersRef = useRef(new Map());
   const redrawFrameRef = useRef(null);
   const saveTimerRef = useRef(null);
@@ -204,6 +204,26 @@ export function CropModal({ dataUrl, mimeType, onCrop, onCancel, onError }) {
     if (redrawFrameRef.current) cancelAnimationFrame(redrawFrameRef.current);
   }, []);
 
+  // 드래그(핸들 축소·이동·핀치)로 끝난 직후 브라우저가 손가락 위치에 발사하는
+  // 합성 click 이 X·취소 등 버튼에 닿아 모달이 닫히는 현상을 막는다.
+  // 모든 click 은 자기 자신의 pointerdown 으로 시작하므로, pointerdown 에서
+  // 플래그를 리셋하고 드래그가 일어났을 때만 그 다음 click 을 캡처 단계에서 삼킨다.
+  useEffect(() => {
+    const onPointerDownCapture = () => { draggedRef.current = false; };
+    const onClickCapture = (e) => {
+      if (draggedRef.current) {
+        e.stopPropagation();
+        e.preventDefault();
+      }
+    };
+    document.addEventListener("pointerdown", onPointerDownCapture, true);
+    document.addEventListener("click", onClickCapture, true);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDownCapture, true);
+      document.removeEventListener("click", onClickCapture, true);
+    };
+  }, []);
+
   const toCanvas = (e) => {
     const canvas = canvasRef.current;
     if (!canvas) return { x: 0, y: 0 };
@@ -306,6 +326,7 @@ export function CropModal({ dataUrl, mimeType, onCrop, onCancel, onError }) {
 
     if (pinchRef.current && pointersRef.current.size >= 2) {
       e.preventDefault();
+      draggedRef.current = true;
       const pair = getPointerPair();
       const distance = getDistance(pair);
       const center = getCenter(pair);
@@ -328,6 +349,7 @@ export function CropModal({ dataUrl, mimeType, onCrop, onCancel, onError }) {
       return;
     }
     e.preventDefault();
+    draggedRef.current = true;
     const p  = toCanvas(e);
     const { type, startX, startY, startCrop: sc, startImageView } = dragRef.current;
     const canvas = canvasRef.current;
@@ -355,7 +377,6 @@ export function CropModal({ dataUrl, mimeType, onCrop, onCancel, onError }) {
 
   const onUp = (e) => {
     e.preventDefault();
-    lastDragEndTimeRef.current = Date.now();
     pointersRef.current.delete(e.pointerId);
     dragRef.current = null;
     if (pointersRef.current.size < 2) pinchRef.current = null;
@@ -456,10 +477,7 @@ export function CropModal({ dataUrl, mimeType, onCrop, onCancel, onError }) {
       onMouseDown={(e) => e.stopPropagation()}
       onMouseMove={(e) => e.stopPropagation()}
       onMouseUp={(e) => e.stopPropagation()}
-      onClick={() => {
-        if (Date.now() - lastDragEndTimeRef.current < 400) return;
-        onCancel();
-      }}
+      onClick={onCancel}
     >
       <motion.div
         ref={modalRef}
@@ -467,9 +485,6 @@ export function CropModal({ dataUrl, mimeType, onCrop, onCancel, onError }) {
         initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: 16 }}
         transition={{ duration: 0.2, ease: [0.2, 0, 0, 1] }}
-        onClickCapture={(e) => {
-          if (Date.now() - lastDragEndTimeRef.current < 200) e.stopPropagation();
-        }}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="crop-modal-hdr">
