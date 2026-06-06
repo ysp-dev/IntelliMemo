@@ -14,6 +14,7 @@ export function CropModal({ dataUrl, mimeType, onCrop, onCancel, onError }) {
   const onErrorRef = useRef(onError);
   const dragRef   = useRef(null);
   const pinchRef  = useRef(null);
+  const justDraggedRef = useRef(false);
   const pointersRef = useRef(new Map());
   const redrawFrameRef = useRef(null);
   const saveTimerRef = useRef(null);
@@ -354,6 +355,7 @@ export function CropModal({ dataUrl, mimeType, onCrop, onCancel, onError }) {
 
   const onUp = (e) => {
     e.preventDefault();
+    if (dragRef.current) justDraggedRef.current = true;
     pointersRef.current.delete(e.pointerId);
     dragRef.current = null;
     if (pointersRef.current.size < 2) pinchRef.current = null;
@@ -448,7 +450,10 @@ export function CropModal({ dataUrl, mimeType, onCrop, onCancel, onError }) {
       className="crop-overlay"
       initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
       transition={{ duration: 0.18 }}
-      onClick={onCancel}
+      onClick={() => {
+        if (justDraggedRef.current) { justDraggedRef.current = false; return; }
+        onCancel();
+      }}
     >
       <motion.div
         ref={modalRef}
