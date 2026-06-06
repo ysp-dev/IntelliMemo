@@ -216,11 +216,19 @@ export function CropModal({ dataUrl, mimeType, onCrop, onCancel, onError }) {
         e.preventDefault();
       }
     };
+    const onKeyDown = (e) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onCancelRef.current();
+      }
+    };
     document.addEventListener("pointerdown", onPointerDownCapture, true);
     document.addEventListener("click", onClickCapture, true);
+    document.addEventListener("keydown", onKeyDown);
     return () => {
       document.removeEventListener("pointerdown", onPointerDownCapture, true);
       document.removeEventListener("click", onClickCapture, true);
+      document.removeEventListener("keydown", onKeyDown);
     };
   }, []);
 
@@ -459,6 +467,11 @@ export function CropModal({ dataUrl, mimeType, onCrop, onCancel, onError }) {
       }
       setSavePreview({ dataUrl, status: "saved", message: "저장 완료" });
     } catch (e) {
+      if (e?.name === "AbortError") {
+        // 사용자가 공유 시트를 취소한 경우 — 실패가 아니므로 조용히 닫는다.
+        setSavePreview(null);
+        return;
+      }
       console.error(e);
       setSavePreview({ dataUrl, status: "error", message: "저장 실패" });
     }
