@@ -17,11 +17,9 @@ export function CropModal({ dataUrl, mimeType, onCrop, onCancel, onError }) {
   const pointersRef = useRef(new Map());
   const redrawFrameRef = useRef(null);
   const saveTimerRef = useRef(null);
-  const lastTapRef = useRef(0);
   const [savePreview, setSavePreview] = useState(null);
+  // 크롭 결과 미리보기(2단계 화면) dataUrl. null 이면 1단계(크롭 편집) 화면.
   const [cropPreview, setCropPreview] = useState(null);
-
-  const DOUBLE_TAP_MS = 300;
 
   const MAX_IMAGE_SCALE = 5;
   const PREVIEW_MAX_PX = 1100;
@@ -398,25 +396,12 @@ export function CropModal({ dataUrl, mimeType, onCrop, onCancel, onError }) {
 
   const onUp = (e) => {
     e.preventDefault();
-    // 손가락을 떼는 시점의 상태로 "단일 손가락 탭"(드래그·핀치 아님)을 판별한다.
-    const wasTap = !draggedRef.current && pointersRef.current.size === 1;
     pointersRef.current.delete(e.pointerId);
     dragRef.current = null;
     if (pointersRef.current.size < 2) pinchRef.current = null;
     try {
       if (e.currentTarget.hasPointerCapture?.(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
     } catch {}
-
-    if (wasTap && pointersRef.current.size === 0) {
-      const now = Date.now();
-      if (now - lastTapRef.current <= DOUBLE_TAP_MS) {
-        lastTapRef.current = 0;
-        showCropPreview();
-      } else {
-        lastTapRef.current = now;
-      }
-    }
-
     setCanvasCursor(hitTest(toCanvas(e)));
     redraw();
   };
@@ -539,7 +524,11 @@ export function CropModal({ dataUrl, mimeType, onCrop, onCancel, onError }) {
         transition={{ duration: 0.2, ease: [0.2, 0, 0, 1] }}
       >
         <div className="crop-modal-hdr">
-          <h2>텍스트 영역 선택 <span>모서리·변 조절, 드래그·핀치·휠로 사진 맞춤 · 더블 탭으로 미리보기</span></h2>
+          {cropPreview ? (
+            <h2>미리보기 <span>이대로 텍스트를 추출하거나 이미지를 저장하세요</span></h2>
+          ) : (
+            <h2>텍스트 영역 선택 <span>모서리·변 조절, 드래그·핀치·휠로 사진 맞춤</span></h2>
+          )}
         </div>
         <div className="crop-canvas-wrap">
           <canvas
@@ -562,24 +551,25 @@ export function CropModal({ dataUrl, mimeType, onCrop, onCancel, onError }) {
             </div>
           )}
           {cropPreview && (
-            <div
-              className="crop-preview-overlay"
-              role="button"
-              tabIndex={0}
-              aria-label="크롭 미리보기 닫기"
-              onPointerDown={(e) => e.stopPropagation()}
-              onClick={() => setCropPreview(null)}
-            >
+            <div className="crop-preview-overlay" aria-label="크롭 미리보기">
               <img src={cropPreview} alt="크롭 미리보기" />
-              <span>탭하여 닫기</span>
             </div>
           )}
         </div>
         <div className="crop-modal-footer">
-          <button type="button" className="crop-cancel-btn" onClick={onCancel}>취소</button>
-          <button type="button" className="crop-reset-btn" onClick={initCrop}>초기화</button>
-          <button type="button" className="crop-save-btn" onClick={handleSaveImage}>이미지 저장</button>
-          <button type="button" className="crop-apply-btn" onClick={handleApply}>텍스트 추출</button>
+          {cropPreview ? (
+            <>
+              <button type="button" className="crop-cancel-btn" onClick={() => setCropPreview(null)}>취소</button>
+              <button type="button" className="crop-save-btn" onClick={handleSaveImage}>이미지 저장</button>
+              <button type="button" className="crop-apply-btn" onClick={handleApply}>텍스트 추출</button>
+            </>
+          ) : (
+            <>
+              <button type="button" className="crop-cancel-btn" onClick={onCancel}>취소</button>
+              <button type="button" className="crop-reset-btn" onClick={initCrop}>초기화</button>
+              <button type="button" className="crop-apply-btn" onClick={showCropPreview}>미리보기</button>
+            </>
+          )}
         </div>
       </motion.div>
     </motion.div>
