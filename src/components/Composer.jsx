@@ -28,7 +28,38 @@ import { useAutoResize } from "../hooks/useAutoResize.js";
 import { CropModal } from "./modals/CropModal.jsx";
 
 const MAX_IMAGE_BYTES = 16 * 1024 * 1024;
-const SUPPORTED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif", "image/heic", "image/heif"]);
+const MAX_CROP_SOURCE_EDGE = 1800;
+const IMAGE_TYPE_BY_EXTENSION = {
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  png: "image/png",
+  webp: "image/webp",
+  gif: "image/gif",
+  heic: "image/heic",
+  heif: "image/heif",
+};
+const SUPPORTED_IMAGE_TYPES = new Set(Object.values(IMAGE_TYPE_BY_EXTENSION));
+
+const getImageMimeType = (file) => {
+  const declaredType = file.type === "image/jpg" ? "image/jpeg" : file.type;
+  if (declaredType) return declaredType;
+  const extension = file.name.split(".").pop()?.toLowerCase();
+  return IMAGE_TYPE_BY_EXTENSION[extension] ?? "";
+};
+
+const loadImageFromUrl = (url) => new Promise((resolve, reject) => {
+  const img = new Image();
+  img.onload = () => resolve(img);
+  img.onerror = () => reject(new Error("이미지를 불러오지 못했습니다."));
+  img.src = url;
+});
+
+const canvasToBlob = (canvas, mimeType, quality) => new Promise((resolve, reject) => {
+  canvas.toBlob((blob) => {
+    if (blob) resolve(blob);
+    else reject(new Error("이미지를 처리하지 못했습니다."));
+  }, mimeType, quality);
+});
 
 export function Composer({
   activeView,
@@ -53,6 +84,7 @@ export function Composer({
   const actionRef = useRef(null);
   const cameraRef  = useRef(null);
   const galleryRef = useRef(null);
+  const cropObjectUrlRef = useRef(null);
   const [aiOpen,    setAiOpen]    = useState(false);
   const [aiMode,    setAiMode]    = useState(DEFAULT_AI_CORRECTION_MODE);
   const [ocrState,  setOcrState]  = useState("idle");
@@ -74,9 +106,40 @@ export function Composer({
     galleryRef.current?.click();
   };
 
-  const handleImageFile = (file) => {
+  const closeCrop = () => {
+    if (cropObjectUrlRef.current) {
+      URL.revokeObjectURL(cropObjectUrlRef.current);
+      cropObjectUrlRef.current = null;
+    }
+    setCropData(null);
+  };
+
+  const prepareImageForCrop = async (file) => {
+    const sourceUrl = URL.createObjectURL(file);
+    try {
+      const img = await loadImageFromUrl(sourceUrl);
+      const scale = Math.min(1, MAX_CROP_SOURCE_EDGE / img.naturalWidth, MAX_CROP_SOURCE_EDGE / img.naturalHeight);
+      const width = Math.max(1, Math.round(img.naturalWidth * scale));
+      const height = Math.max(1, Math.round(img.naturalHeight * scale));
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(img, 0, 0, width, height);
+      const blob = await canvasToBlob(canvas, "image/jpeg", 0.9);
+      const objectUrl = URL.createObjectURL(blob);
+      if (cropObjectUrlRef.current) URL.revokeObjectURL(cropObjectUrlRef.current);
+      cropObjectUrlRef.current = objectUrl;
+      setCropData({ dataUrl: objectUrl, mimeType: "image/jpeg" });
+    } finally {
+      URL.revokeObjectURL(sourceUrl);
+    }
+  };
+
+  const handleImageFile = async (file) => {
     if (!file) return;
-    if (!SUPPORTED_IMAGE_TYPES.has(file.type)) {
+    const mimeType = getImageMimeType(file);
+    if (!SUPPORTED_IMAGE_TYPES.has(mimeType)) {
       settleOcrError("이미지", "JPG, PNG, WEBP, GIF, HEIC 이미지만 가져올 수 있습니다.");
       return;
     }
@@ -84,16 +147,11 @@ export function Composer({
       settleOcrError("이미지", "이미지가 너무 큽니다. 16MB 이하 이미지를 선택하세요.");
       return;
     }
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === "string") {
-        setCropData({ dataUrl: reader.result, mimeType: file.type || "image/jpeg" });
-      }
-    };
-    reader.onerror = () => {
-      settleOcrError("이미지", "이미지를 불러오지 못했습니다.");
-    };
-    reader.readAsDataURL(file);
+    try {
+      await prepareImageForCrop(file);
+    } catch (err) {
+      settleOcrError("이미지", err instanceof Error ? err.message : "이미지를 불러오지 못했습니다.");
+    }
   };
 
   const handleImageSelect = (e) => {
@@ -165,7 +223,7 @@ export function Composer({
   };
 
   const handleCropConfirm = async (base64, mimeType) => {
-    setCropData(null);
+    closeCrop();
 
     if (!ocrSettings.apiKey) {
       setAiOpen(true);
@@ -189,6 +247,10 @@ export function Composer({
   useEffect(() => {
     if (aiStatus.state === "error") setAiOpen(true);
   }, [aiStatus.state]);
+
+  useEffect(() => () => {
+    if (cropObjectUrlRef.current) URL.revokeObjectURL(cropObjectUrlRef.current);
+  }, []);
 
   useEffect(() => {
     const ref = activeView === "memos" ? memoRef : actionRef;
@@ -527,7 +589,7 @@ export function Composer({
               mimeType={cropData.mimeType}
               onCrop={handleCropConfirm}
               onError={(message) => settleOcrError("이미지", message)}
-              onCancel={() => setCropData(null)}
+              onCancel={closeCrop}
             />
           )}
         </AnimatePresence>,

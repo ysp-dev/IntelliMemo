@@ -13,10 +13,14 @@ export function CropModal({ dataUrl, mimeType, onCrop, onCancel, onError }) {
   const dragRef   = useRef(null);
   const pinchRef  = useRef(null);
   const pointersRef = useRef(new Map());
+  const redrawFrameRef = useRef(null);
   const saveTimerRef = useRef(null);
   const [savePreview, setSavePreview] = useState(null);
 
   const MAX_IMAGE_SCALE = 5;
+  const PREVIEW_MAX_PX = 1100;
+  const OUTPUT_MAX_PX = 1400;
+  const MIN_CROP_CSS_PX = 48;
 
   const getHandleScale = (canvas) => {
     const rect = canvas.getBoundingClientRect();
@@ -60,7 +64,7 @@ export function CropModal({ dataUrl, mimeType, onCrop, onCancel, onError }) {
     return next;
   }, []);
 
-  const redraw = useCallback(() => {
+  const redrawNow = useCallback(() => {
     const canvas = canvasRef.current;
     const img    = imgRef.current;
     if (!canvas || !img) return;
@@ -134,6 +138,14 @@ export function CropModal({ dataUrl, mimeType, onCrop, onCancel, onError }) {
     ctx.restore();
   }, []);
 
+  const redraw = useCallback(() => {
+    if (redrawFrameRef.current) return;
+    redrawFrameRef.current = requestAnimationFrame(() => {
+      redrawFrameRef.current = null;
+      redrawNow();
+    });
+  }, [redrawNow]);
+
   const zoomImageAtCanvasPoint = useCallback((point, nextScale) => {
     const current = imageViewRef.current;
     const scale = Math.max(1, Math.min(MAX_IMAGE_SCALE, nextScale || 1));
@@ -163,7 +175,7 @@ export function CropModal({ dataUrl, mimeType, onCrop, onCancel, onError }) {
       imgRef.current = img;
       const canvas = canvasRef.current;
       if (!canvas) return;
-      const scale = Math.min(1, 1400 / img.naturalWidth, 1400 / img.naturalHeight);
+      const scale = Math.min(1, PREVIEW_MAX_PX / img.naturalWidth, PREVIEW_MAX_PX / img.naturalHeight);
       canvas.width  = Math.round(img.naturalWidth  * scale);
       canvas.height = Math.round(img.naturalHeight * scale);
       initCrop();
@@ -177,10 +189,12 @@ export function CropModal({ dataUrl, mimeType, onCrop, onCancel, onError }) {
 
   useEffect(() => () => {
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    if (redrawFrameRef.current) cancelAnimationFrame(redrawFrameRef.current);
   }, []);
 
   const toCanvas = (e) => {
     const canvas = canvasRef.current;
+    if (!canvas) return { x: 0, y: 0 };
     const rect   = canvas.getBoundingClientRect();
     const src    = e.touches ? e.touches[0] : e;
     return {
@@ -303,7 +317,8 @@ export function CropModal({ dataUrl, mimeType, onCrop, onCancel, onError }) {
     const p  = toCanvas(e);
     const { type, startX, startY, startCrop: sc, startImageView } = dragRef.current;
     const canvas = canvasRef.current;
-    const MIN    = 30;
+    if (!canvas) return;
+    const MIN    = Math.max(30, MIN_CROP_CSS_PX * getHandleScale(canvas));
     const dx = p.x - startX, dy = p.y - startY;
     let { x1, y1, x2, y2 } = sc;
 
@@ -340,16 +355,16 @@ export function CropModal({ dataUrl, mimeType, onCrop, onCancel, onError }) {
     const c      = cropRef.current;
     const img    = imgRef.current;
     const canvas = canvasRef.current;
-    if (!img) return null;
+    if (!img || !canvas) return null;
 
     const out    = document.createElement("canvas");
     const ctx    = out.getContext("2d");
-    const MAX_PX = 1400;
+    if (!ctx) return null;
 
     if (!c) {
-      const scale = Math.min(1, MAX_PX / img.naturalWidth, MAX_PX / img.naturalHeight);
-      out.width  = Math.round(img.naturalWidth  * scale);
-      out.height = Math.round(img.naturalHeight * scale);
+      const scale = Math.min(1, OUTPUT_MAX_PX / img.naturalWidth, OUTPUT_MAX_PX / img.naturalHeight);
+      out.width  = Math.max(1, Math.round(img.naturalWidth  * scale));
+      out.height = Math.max(1, Math.round(img.naturalHeight * scale));
       ctx.drawImage(img, 0, 0, out.width, out.height);
     } else {
       const view = imageViewRef.current;
@@ -360,9 +375,13 @@ export function CropModal({ dataUrl, mimeType, onCrop, onCancel, onError }) {
       const srcY = Math.max(0, (y1 - view.offsetY) * sy);
       const cropW = Math.min(img.naturalWidth - srcX, (x2 - x1) * sx);
       const cropH = Math.min(img.naturalHeight - srcY, (y2 - y1) * sy);
-      const scale = Math.min(1, MAX_PX / cropW, MAX_PX / cropH);
-      out.width  = Math.round(cropW * scale);
-      out.height = Math.round(cropH * scale);
+      if (![srcX, srcY, cropW, cropH].every(Number.isFinite) || cropW < 1 || cropH < 1) {
+        onError?.("선택 영역이 너무 작습니다. 가이드박스를 조금 키워주세요.");
+        return null;
+      }
+      const scale = Math.min(1, OUTPUT_MAX_PX / cropW, OUTPUT_MAX_PX / cropH);
+      out.width  = Math.max(1, Math.round(cropW * scale));
+      out.height = Math.max(1, Math.round(cropH * scale));
       ctx.drawImage(img, srcX, srcY, cropW, cropH, 0, 0, out.width, out.height);
     }
 
