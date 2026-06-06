@@ -134,6 +134,19 @@ export function CropModal({ dataUrl, mimeType, onCrop, onCancel }) {
     ctx.restore();
   }, []);
 
+  const zoomImageAtCanvasPoint = useCallback((point, nextScale) => {
+    const current = imageViewRef.current;
+    const scale = Math.max(1, Math.min(MAX_IMAGE_SCALE, nextScale || 1));
+    const imagePointX = (point.x - current.offsetX) / current.scale;
+    const imagePointY = (point.y - current.offsetY) / current.scale;
+    clampImageView({
+      scale,
+      offsetX: point.x - imagePointX * scale,
+      offsetY: point.y - imagePointY * scale,
+    });
+    redraw();
+  }, [clampImageView, redraw]);
+
   const initCrop = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -171,6 +184,24 @@ export function CropModal({ dataUrl, mimeType, onCrop, onCancel }) {
       y: (src.clientY - rect.top)  * (canvas.height / Math.max(rect.height, 1)),
     };
   };
+
+  const onWheel = useCallback((e) => {
+    e.preventDefault();
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const p = toCanvas(e);
+    const modeMultiplier = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 100 : 1;
+    const delta = e.deltaY * modeMultiplier;
+    const zoomFactor = Math.exp(-delta * 0.002);
+    zoomImageAtCanvasPoint(p, imageViewRef.current.scale * zoomFactor);
+  }, [zoomImageAtCanvasPoint]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return undefined;
+    canvas.addEventListener("wheel", onWheel, { passive: false });
+    return () => canvas.removeEventListener("wheel", onWheel);
+  }, [onWheel]);
 
   const getPointerPair = () => [...pointersRef.current.values()].slice(0, 2);
   const getDistance = ([a, b]) => Math.hypot(b.x - a.x, b.y - a.y);
@@ -250,10 +281,11 @@ export function CropModal({ dataUrl, mimeType, onCrop, onCancel }) {
       const nextScale = startImageView.scale * (distance / startDistance);
       const imagePointX = (startCenter.x - startImageView.offsetX) / startImageView.scale;
       const imagePointY = (startCenter.y - startImageView.offsetY) / startImageView.scale;
+      const scale = Math.max(1, Math.min(MAX_IMAGE_SCALE, nextScale || 1));
       clampImageView({
-        scale: nextScale,
-        offsetX: center.x - imagePointX * nextScale,
-        offsetY: center.y - imagePointY * nextScale,
+        scale,
+        offsetX: center.x - imagePointX * scale,
+        offsetY: center.y - imagePointY * scale,
       });
       redraw();
       return;
@@ -391,7 +423,7 @@ export function CropModal({ dataUrl, mimeType, onCrop, onCancel }) {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="crop-modal-hdr">
-          <h2>텍스트 영역 선택 <span>모서리·변 조절, 드래그·핀치로 사진 맞춤</span></h2>
+          <h2>텍스트 영역 선택 <span>모서리·변 조절, 드래그·핀치·휠로 사진 맞춤</span></h2>
           <button type="button" className="crop-close-btn" aria-label="닫기" onClick={onCancel}>
             <X size={14} />
           </button>
