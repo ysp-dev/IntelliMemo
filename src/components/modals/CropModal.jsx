@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { X } from "lucide-react";
 import { useFocusTrap } from "../../hooks/useFocusTrap.js";
 
 export function CropModal({ dataUrl, mimeType, onCrop, onCancel, onError }) {
@@ -205,7 +204,7 @@ export function CropModal({ dataUrl, mimeType, onCrop, onCancel, onError }) {
   }, []);
 
   // 드래그(핸들 축소·이동·핀치)로 끝난 직후 브라우저가 손가락 위치에 발사하는
-  // 합성 click 이 X·취소 등 버튼에 닿아 모달이 닫히는 현상을 막는다.
+  // 합성 click 이 취소 등 버튼에 닿아 모달이 닫히는 현상을 막는다.
   // 모든 click 은 자기 자신의 pointerdown 으로 시작하므로, pointerdown 에서
   // 플래그를 리셋하고 드래그가 일어났을 때만 그 다음 click 을 캡처 단계에서 삼킨다.
   useEffect(() => {
@@ -490,7 +489,6 @@ export function CropModal({ dataUrl, mimeType, onCrop, onCancel, onError }) {
       onMouseDown={(e) => e.stopPropagation()}
       onMouseMove={(e) => e.stopPropagation()}
       onMouseUp={(e) => e.stopPropagation()}
-      onClick={onCancel}
     >
       <motion.div
         ref={modalRef}
@@ -498,13 +496,9 @@ export function CropModal({ dataUrl, mimeType, onCrop, onCancel, onError }) {
         initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: 16 }}
         transition={{ duration: 0.2, ease: [0.2, 0, 0, 1] }}
-        onClick={(e) => e.stopPropagation()}
       >
         <div className="crop-modal-hdr">
           <h2>텍스트 영역 선택 <span>모서리·변 조절, 드래그·핀치·휠로 사진 맞춤</span></h2>
-          <button type="button" className="crop-close-btn" aria-label="닫기" onClick={onCancel}>
-            <X size={14} />
-          </button>
         </div>
         <div className="crop-canvas-wrap">
           <canvas

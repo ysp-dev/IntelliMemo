@@ -1226,13 +1226,6 @@ select:focus-visible,
 .crop-modal-hdr h2 span {
   font-weight: 400; font-size: 12px; color: rgba(255,255,255,0.45); margin-left: 6px;
 }
-.crop-close-btn {
-  display: grid; place-items: center;
-  width: 28px; height: 28px; border-radius: 50%;
-  color: rgba(255,255,255,0.6); background: rgba(255,255,255,0.1);
-  transition: background 110ms ease;
-}
-.crop-close-btn:hover { background: rgba(255,255,255,0.18); }
 .crop-canvas-wrap {
   flex: 1; min-height: 0; overflow: hidden;
   display: flex; align-items: center; justify-content: center;

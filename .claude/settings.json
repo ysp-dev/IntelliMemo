@@ -3,7 +3,18 @@
     "allow": [
       "Bash(sed -n '311,1365p' /Users/youngsoonpark/Projects/intelli-memo/IntelliMemoApp.jsx | sed 's/^  //' > /Users/youngsoonpark/Projects/intelli-memo/src/app.css && wc -l /Users/youngsoonpark/Projects/intelli-memo/src/app.css)",
       "Bash(npm run *)",
-      "Bash(git push*)"
+      "Bash(git push*)",
+      "Bash(git -C /Users/youngsoonpark/Documents/GitHub/feedback status)",
+      "Bash(git -C /Users/youngsoonpark/Documents/GitHub/feedback log --oneline -3)",
+      "Bash(git -C /Users/youngsoonpark/Documents/GitHub/feedback show --stat --oneline HEAD)",
+      "Bash(git -C /Users/youngsoonpark/Documents/GitHub/IntelliMemo show --stat --oneline HEAD)",
+      "Bash(git -C /Users/youngsoonpark/Documents/GitHub/IntelliMemo rev-parse HEAD)",
+      "Bash(git -C /Users/youngsoonpark/Documents/GitHub/IntelliMemo status --short)",
+      "Bash(git -C /Users/youngsoonpark/Documents/GitHub/IntelliMemo log --oneline -6)",
+      "Bash(git -C /Users/youngsoonpark/Documents/GitHub/IntelliMemo rev-list --left-right --count origin/main...HEAD)",
+      "Bash(git -C /Users/youngsoonpark/Documents/GitHub/feedback status --short)",
+      "Bash(git -C /Users/youngsoonpark/Documents/GitHub/feedback log --oneline -6)",
+      "Bash(git -C /Users/youngsoonpark/Documents/GitHub/feedback rev-list --left-right --count origin/main...HEAD)"
     ],
     "additionalDirectories": [
       "/Users/youngsoonpark/Projects/intelli-memo/src"
