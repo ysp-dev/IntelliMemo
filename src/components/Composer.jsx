@@ -69,12 +69,10 @@ export function Composer({
   };
 
   const handleCameraClick = () => {
-    if (isAiOcr && !ocrSettings.apiKey) { setAiOpen(true); return; }
     cameraRef.current?.click();
   };
 
   const handleGalleryClick = () => {
-    if (isAiOcr && !ocrSettings.apiKey) { setAiOpen(true); return; }
     galleryRef.current?.click();
   };
 
@@ -101,7 +99,6 @@ export function Composer({
       .find((item) => item.kind === "file" && item.type.startsWith("image/"));
     if (!imageItem) return;
     e.preventDefault();
-    if (isAiOcr && !ocrSettings.apiKey) { setAiOpen(true); return; }
     handleImageFile(imageItem.getAsFile());
   };
 
