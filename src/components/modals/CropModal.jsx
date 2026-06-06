@@ -10,6 +10,8 @@ export function CropModal({ dataUrl, mimeType, onCrop, onCancel, onError }) {
   const imgRef    = useRef(null);
   const cropRef   = useRef(null);
   const imageViewRef = useRef({ scale: 1, offsetX: 0, offsetY: 0 });
+  const onCancelRef = useRef(onCancel);
+  const onErrorRef = useRef(onError);
   const dragRef   = useRef(null);
   const pinchRef  = useRef(null);
   const pointersRef = useRef(new Map());
@@ -20,7 +22,7 @@ export function CropModal({ dataUrl, mimeType, onCrop, onCancel, onError }) {
   const MAX_IMAGE_SCALE = 5;
   const PREVIEW_MAX_PX = 1100;
   const OUTPUT_MAX_PX = 1400;
-  const MIN_CROP_CSS_PX = 48;
+  const MIN_CROP_CSS_PX = 36;
 
   const getHandleScale = (canvas) => {
     const rect = canvas.getBoundingClientRect();
@@ -69,6 +71,7 @@ export function CropModal({ dataUrl, mimeType, onCrop, onCancel, onError }) {
     const img    = imgRef.current;
     if (!canvas || !img) return;
     const ctx = canvas.getContext("2d");
+    if (!ctx) return;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.fillStyle = "#000";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -83,9 +86,9 @@ export function CropModal({ dataUrl, mimeType, onCrop, onCancel, onError }) {
     const { x1, y1, x2, y2 } = c;
     const w = x2 - x1, h = y2 - y1;
     const scale = getHandleScale(canvas);
-    const cornerLen = Math.max(22 * scale, Math.min(w, h, 150 * scale) * 0.2);
-    const edgeLen = Math.max(34 * scale, Math.min(w, h, 170 * scale) * 0.18);
-    const handleWidth = Math.max(3 * scale, Math.min(7 * scale, Math.min(w, h) * 0.012));
+    const cornerLen = Math.max(8 * scale, Math.min(w, h, 150 * scale) * 0.2);
+    const edgeLen = Math.max(10 * scale, Math.min(w, h, 170 * scale) * 0.18);
+    const handleWidth = Math.max(2 * scale, Math.min(6 * scale, Math.min(w, h) * 0.012));
     const dragging = Boolean(dragRef.current);
 
     ctx.fillStyle = dragging ? "rgba(0,0,0,0.58)" : "rgba(0,0,0,0.48)";
@@ -170,6 +173,14 @@ export function CropModal({ dataUrl, mimeType, onCrop, onCancel, onError }) {
   }, [clampImageView, redraw]);
 
   useEffect(() => {
+    onCancelRef.current = onCancel;
+  }, [onCancel]);
+
+  useEffect(() => {
+    onErrorRef.current = onError;
+  }, [onError]);
+
+  useEffect(() => {
     const img = new Image();
     img.onload = () => {
       imgRef.current = img;
@@ -181,11 +192,11 @@ export function CropModal({ dataUrl, mimeType, onCrop, onCancel, onError }) {
       initCrop();
     };
     img.onerror = () => {
-      onError?.("이미지를 불러오지 못했습니다.");
-      onCancel();
+      onErrorRef.current?.("이미지를 불러오지 못했습니다.");
+      onCancelRef.current();
     };
     img.src = dataUrl;
-  }, [dataUrl, initCrop, onCancel, onError]);
+  }, [dataUrl, initCrop]);
 
   useEffect(() => () => {
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
@@ -245,8 +256,10 @@ export function CropModal({ dataUrl, mimeType, onCrop, onCancel, onError }) {
     if (!c) return null;
     const canvas = canvasRef.current;
     if (!canvas) return null;
-    const R = 30 * getHandleScale(canvas);
     const { x1, y1, x2, y2 } = c;
+    const scale = getHandleScale(canvas);
+    const cropSize = Math.min(x2 - x1, y2 - y1);
+    const R = Math.min(30 * scale, Math.max(14 * scale, cropSize * 0.35));
     for (const [name, cx, cy] of [
       ["tl", x1, y1], ["tr", x2, y1], ["bl", x1, y2], ["br", x2, y2],
     ]) {
@@ -376,7 +389,7 @@ export function CropModal({ dataUrl, mimeType, onCrop, onCancel, onError }) {
       const cropW = Math.min(img.naturalWidth - srcX, (x2 - x1) * sx);
       const cropH = Math.min(img.naturalHeight - srcY, (y2 - y1) * sy);
       if (![srcX, srcY, cropW, cropH].every(Number.isFinite) || cropW < 1 || cropH < 1) {
-        onError?.("선택 영역이 너무 작습니다. 가이드박스를 조금 키워주세요.");
+        onErrorRef.current?.("선택 영역이 너무 작습니다. 가이드박스를 조금 키워주세요.");
         return null;
       }
       const scale = Math.min(1, OUTPUT_MAX_PX / cropW, OUTPUT_MAX_PX / cropH);
