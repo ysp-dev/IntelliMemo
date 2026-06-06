@@ -17,7 +17,11 @@ export function CropModal({ dataUrl, mimeType, onCrop, onCancel, onError }) {
   const pointersRef = useRef(new Map());
   const redrawFrameRef = useRef(null);
   const saveTimerRef = useRef(null);
+  const lastTapRef = useRef(0);
   const [savePreview, setSavePreview] = useState(null);
+  const [cropPreview, setCropPreview] = useState(null);
+
+  const DOUBLE_TAP_MS = 300;
 
   const MAX_IMAGE_SCALE = 5;
   const PREVIEW_MAX_PX = 1100;
@@ -394,12 +398,25 @@ export function CropModal({ dataUrl, mimeType, onCrop, onCancel, onError }) {
 
   const onUp = (e) => {
     e.preventDefault();
+    // 손가락을 떼는 시점의 상태로 "단일 손가락 탭"(드래그·핀치 아님)을 판별한다.
+    const wasTap = !draggedRef.current && pointersRef.current.size === 1;
     pointersRef.current.delete(e.pointerId);
     dragRef.current = null;
     if (pointersRef.current.size < 2) pinchRef.current = null;
     try {
       if (e.currentTarget.hasPointerCapture?.(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
     } catch {}
+
+    if (wasTap && pointersRef.current.size === 0) {
+      const now = Date.now();
+      if (now - lastTapRef.current <= DOUBLE_TAP_MS) {
+        lastTapRef.current = 0;
+        showCropPreview();
+      } else {
+        lastTapRef.current = now;
+      }
+    }
+
     setCanvasCursor(hitTest(toCanvas(e)));
     redraw();
   };
@@ -440,6 +457,14 @@ export function CropModal({ dataUrl, mimeType, onCrop, onCancel, onError }) {
 
     const outMime = mimeType === "image/png" ? "image/png" : "image/jpeg";
     return { out, outMime };
+  };
+
+  const showCropPreview = () => {
+    const result = getCroppedCanvas();
+    if (!result) return;
+    const { out, outMime } = result;
+    const dataUrl = out.toDataURL(outMime, outMime === "image/jpeg" ? 0.92 : undefined);
+    setCropPreview(dataUrl);
   };
 
   const handleApply = () => {
@@ -514,7 +539,7 @@ export function CropModal({ dataUrl, mimeType, onCrop, onCancel, onError }) {
         transition={{ duration: 0.2, ease: [0.2, 0, 0, 1] }}
       >
         <div className="crop-modal-hdr">
-          <h2>텍스트 영역 선택 <span>모서리·변 조절, 드래그·핀치·휠로 사진 맞춤</span></h2>
+          <h2>텍스트 영역 선택 <span>모서리·변 조절, 드래그·핀치·휠로 사진 맞춤 · 더블 탭으로 미리보기</span></h2>
         </div>
         <div className="crop-canvas-wrap">
           <canvas
@@ -534,6 +559,19 @@ export function CropModal({ dataUrl, mimeType, onCrop, onCancel, onError }) {
             <div className={`crop-save-preview ${savePreview.status}`}>
               <img src={savePreview.dataUrl} alt="크롭 저장 미리보기" />
               <span>{savePreview.message}</span>
+            </div>
+          )}
+          {cropPreview && (
+            <div
+              className="crop-preview-overlay"
+              role="button"
+              tabIndex={0}
+              aria-label="크롭 미리보기 닫기"
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={() => setCropPreview(null)}
+            >
+              <img src={cropPreview} alt="크롭 미리보기" />
+              <span>탭하여 닫기</span>
             </div>
           )}
         </div>
