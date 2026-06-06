@@ -54,6 +54,7 @@ const getDragPoint = (event) => {
 
 const shouldIgnorePullTarget = (target) => {
   if (typeof Element === "undefined" || !(target instanceof Element)) return false;
+  if (target.closest(".crop-overlay")) return true;
   return Boolean(target.closest("button,input,textarea,select,a,[role='button'],[contenteditable='true']"));
 };
 

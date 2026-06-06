@@ -355,7 +355,7 @@ export function CropModal({ dataUrl, mimeType, onCrop, onCancel, onError }) {
 
   const onUp = (e) => {
     e.preventDefault();
-    if (dragRef.current) lastDragEndTimeRef.current = Date.now();
+    lastDragEndTimeRef.current = Date.now();
     pointersRef.current.delete(e.pointerId);
     dragRef.current = null;
     if (pointersRef.current.size < 2) pinchRef.current = null;
@@ -467,6 +467,9 @@ export function CropModal({ dataUrl, mimeType, onCrop, onCancel, onError }) {
         initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: 16 }}
         transition={{ duration: 0.2, ease: [0.2, 0, 0, 1] }}
+        onClickCapture={(e) => {
+          if (Date.now() - lastDragEndTimeRef.current < 200) e.stopPropagation();
+        }}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="crop-modal-hdr">
