@@ -90,6 +90,8 @@ export function Composer({
   const [ocrState,  setOcrState]  = useState("idle");
   const [cropData,  setCropData]  = useState(null);
   const [copyState, setCopyState] = useState("idle");
+  // API 키 연결 상태: idle(미설정) · testing(확인 중) · ok(연결됨) · fail(연결 실패)
+  const [keyStatus, setKeyStatus] = useState({ openai: "idle", gemini: "idle" });
 
   const correcting = aiStatus.state === "loading";
   const isOcrBusy = ocrState === "cloud-scanning";
@@ -97,6 +99,48 @@ export function Composer({
     setCopyState(state);
     setTimeout(() => setCopyState("idle"), 1500);
   };
+
+  // 키가 등록되면 실제 연결을 검증해 초록불을 켠다. (입력 후 디바운스, 토큰 비용 없는 모델 목록 조회)
+  useEffect(() => {
+    const key = aiSettings.apiKey?.trim();
+    if (!key) { setKeyStatus((s) => ({ ...s, openai: "idle" })); return undefined; }
+    setKeyStatus((s) => ({ ...s, openai: "testing" }));
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      let ok = false;
+      try {
+        const res = await fetch("https://api.openai.com/v1/models", {
+          headers: { Authorization: `Bearer ${key}` },
+        });
+        ok = res.ok;
+      } catch { ok = false; }
+      if (!cancelled) setKeyStatus((s) => ({ ...s, openai: ok ? "ok" : "fail" }));
+    }, 600);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [aiSettings.apiKey]);
+
+  useEffect(() => {
+    const key = ocrSettings.apiKey?.trim();
+    if (!key) { setKeyStatus((s) => ({ ...s, gemini: "idle" })); return undefined; }
+    setKeyStatus((s) => ({ ...s, gemini: "testing" }));
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      let ok = false;
+      try {
+        const res = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(key)}`,
+        );
+        ok = res.ok;
+      } catch { ok = false; }
+      if (!cancelled) setKeyStatus((s) => ({ ...s, gemini: ok ? "ok" : "fail" }));
+    }, 600);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [ocrSettings.apiKey]);
+
+  const keyDotClass = (st) =>
+    st === "ok" ? "dot-green" : st === "fail" ? "dot-red" : st === "testing" ? "dot-gray" : "dot-off";
+  const keyStatusLabel = (st) =>
+    ({ ok: "연결됨", fail: "연결 실패", testing: "확인 중", idle: "미설정" })[st] ?? "";
 
   const handleCameraClick = () => {
     cameraRef.current?.click();
@@ -562,14 +606,26 @@ export function Composer({
       )}
 
       <div className="ai-row">
-        <button
-          type="button"
-          className="ai-key-btn"
-          onClick={() => setAiOpen((v) => !v)}
-        >
-          <KeyRound size={12} />
-          {aiSettings.apiKey ? "ChatGPT 설정됨" : "ChatGPT 설정"}
-        </button>
+        <div className="ai-key-group">
+          <button
+            type="button"
+            className="ai-key-btn"
+            onClick={() => setAiOpen((v) => !v)}
+          >
+            <KeyRound size={12} />
+            {aiSettings.apiKey ? "ChatGPT 설정됨" : "ChatGPT 설정"}
+          </button>
+          <span className="ai-key-status" aria-label="API 연결 상태">
+            <span
+              className={`status-dot ${keyDotClass(keyStatus.openai)}`}
+              title={`ChatGPT ${keyStatusLabel(keyStatus.openai)}`}
+            />
+            <span
+              className={`status-dot ${keyDotClass(keyStatus.gemini)}`}
+              title={`Gemini ${keyStatusLabel(keyStatus.gemini)}`}
+            />
+          </span>
+        </div>
         <button
           type="button"
           className={`ai-msg ${aiStatus.state}`}
