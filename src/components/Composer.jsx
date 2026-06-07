@@ -100,21 +100,23 @@ export function Composer({
     setTimeout(() => setCopyState("idle"), 1500);
   };
 
-  // 키가 등록되면 실제 연결을 검증해 초록불을 켠다. (입력 후 디바운스, 토큰 비용 없는 모델 목록 조회)
+  // 키가 등록되면 바로 초록불을 켜고, 디바운스 후 연결을 검증해 명백한 인증 실패일 때만 빨강.
+  // (CORS·네트워크로 검증을 못 읽는 경우엔 초록 유지)
   useEffect(() => {
     const key = aiSettings.apiKey?.trim();
     if (!key) { setKeyStatus((s) => ({ ...s, openai: "idle" })); return undefined; }
-    setKeyStatus((s) => ({ ...s, openai: "testing" }));
+    setKeyStatus((s) => ({ ...s, openai: "ok" }));
     let cancelled = false;
     const timer = setTimeout(async () => {
-      let ok = false;
       try {
         const res = await fetch("https://api.openai.com/v1/models", {
           headers: { Authorization: `Bearer ${key}` },
         });
-        ok = res.ok;
-      } catch { ok = false; }
-      if (!cancelled) setKeyStatus((s) => ({ ...s, openai: ok ? "ok" : "fail" }));
+        if (cancelled) return;
+        if (res.status === 401 || res.status === 403) setKeyStatus((s) => ({ ...s, openai: "fail" }));
+      } catch {
+        // 검증 불가 → 등록 상태(초록) 유지
+      }
     }, 600);
     return () => { cancelled = true; clearTimeout(timer); };
   }, [aiSettings.apiKey]);
@@ -122,17 +124,21 @@ export function Composer({
   useEffect(() => {
     const key = ocrSettings.apiKey?.trim();
     if (!key) { setKeyStatus((s) => ({ ...s, gemini: "idle" })); return undefined; }
-    setKeyStatus((s) => ({ ...s, gemini: "testing" }));
+    setKeyStatus((s) => ({ ...s, gemini: "ok" }));
     let cancelled = false;
     const timer = setTimeout(async () => {
-      let ok = false;
       try {
         const res = await fetch(
           `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(key)}`,
         );
-        ok = res.ok;
-      } catch { ok = false; }
-      if (!cancelled) setKeyStatus((s) => ({ ...s, gemini: ok ? "ok" : "fail" }));
+        if (cancelled) return;
+        // Gemini 는 잘못된 키에 400 을 반환한다.
+        if (res.status === 400 || res.status === 401 || res.status === 403) {
+          setKeyStatus((s) => ({ ...s, gemini: "fail" }));
+        }
+      } catch {
+        // 검증 불가 → 등록 상태(초록) 유지
+      }
     }, 600);
     return () => { cancelled = true; clearTimeout(timer); };
   }, [ocrSettings.apiKey]);
