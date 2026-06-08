@@ -38,7 +38,6 @@ import { TagFilterStrip } from "./src/components/TagFilterStrip.jsx";
 import { UndoToast } from "./src/components/UndoToast.jsx";
 import { ErrorModal } from "./src/components/modals/ErrorModal.jsx";
 import { CorrectionModal } from "./src/components/modals/CorrectionModal.jsx";
-import { SmartWorkModal } from "./src/components/SmartWorkModal.jsx";
 
 const PULL_REFRESH_THRESHOLD = 72;
 const PULL_REFRESH_MAX = 98;
@@ -601,7 +600,6 @@ export default function IntelliMemoApp() {
           />
         )}
       </AnimatePresence>
-      <SmartWorkModal />
     </main>
   );
 }
