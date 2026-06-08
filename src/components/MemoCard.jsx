@@ -29,7 +29,7 @@ export function MemoCard({ memo, index, tick, onDelete, onEdit }) {
     if (!editing) { setDraft(memo.text); setDraftTag(memo.tag); }
   }, [editing, memo.text, memo.tag]);
 
-  useAutoResize(editorRef, draft);
+  useAutoResize(editorRef, draft, editing);
 
   const commit = () => {
     const t = draft.trim();
