@@ -90,7 +90,7 @@ export function Composer({
   const [ocrState,  setOcrState]  = useState("idle");
   const [cropData,  setCropData]  = useState(null);
   const [copyState, setCopyState] = useState("idle");
-  // API 키 연결 상태: idle(미설정) · testing(확인 중) · ok(연결됨) · fail(연결 실패)
+  // API 키 연결 상태: idle(미설정) · ok(연결됨) · fail(연결 실패)
   const [keyStatus, setKeyStatus] = useState({ openai: "idle", gemini: "idle" });
 
   const correcting = aiStatus.state === "loading";
@@ -144,9 +144,9 @@ export function Composer({
   }, [ocrSettings.apiKey]);
 
   const keyDotClass = (st) =>
-    st === "ok" ? "dot-green" : st === "fail" ? "dot-red" : st === "testing" ? "dot-gray" : "dot-off";
+    st === "ok" ? "dot-green" : st === "fail" ? "dot-red" : "dot-off";
   const keyStatusLabel = (st) =>
-    ({ ok: "연결됨", fail: "연결 실패", testing: "확인 중", idle: "미설정" })[st] ?? "";
+    ({ ok: "연결됨", fail: "연결 실패", idle: "미설정" })[st] ?? "";
 
   const handleCameraClick = () => {
     cameraRef.current?.click();

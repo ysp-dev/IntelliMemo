@@ -1,5 +1,4 @@
 import {
-  DEFAULT_OCR_MODE,
   DEFAULT_OCR_MODEL,
   DEFAULT_OPENAI_MODEL,
   OCR_MODELS,
@@ -108,11 +107,6 @@ export const getOcrModelFallbacks = (model) =>
 
 export const normalizeOcrModel = (model) =>
   OCR_MODELS.some((m) => m.key === model) ? model : DEFAULT_OCR_MODEL;
-
-export const normalizeOcrMode = (mode) => {
-  if (mode === "cloud-only") return "ai-model";
-  return mode === "ai-model" ? mode : DEFAULT_OCR_MODE;
-};
 
 export const extractText = (res) => {
   for (const c of res.candidates ?? []) {
